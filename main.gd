@@ -255,6 +255,12 @@ func build_ui():
  sprites_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
  sprites_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
  add_child(sprites_layer)
+ scene_layer = Control.new()
+ scene_layer.name = "LiveSceneLayer"
+ scene_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ scene_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ scene_layer.clip_contents = true
+ add_child(scene_layer)
  cards_col = null
 
  # ---- CG frame (cooking / bath / TV / beach images)
@@ -551,7 +557,7 @@ func update_status():
  rel_bar.value = relationship
  energy_bar.value = energy
  loc_label.text = location
- steam_toggle.visible = (location == "الحمام") and not room_active()
+ steam_toggle.visible = (location == "الحمام") and not room_active() and bath_mode != "live"
  if is_instance_valid(activity_badge):
   activity_badge.text = activity_emoji() + " " + layan_activity
 
@@ -721,6 +727,8 @@ func go(place):
  menu_open = false
  _walking = false
  _interrupted = false
+ bath_mode = ""
+ shower_clear()
  _go_inner(place)
  if _interrupted:
   _interrupted = false
@@ -741,8 +749,8 @@ func _go_inner(place):
  if place == "المنزل" and check_scenes():
   _interrupted = true
   return
+ restore_outfit_portrait()
  if place != "الحمام":
-  restore_outfit_portrait()
   steam_visible = false
   if is_instance_valid(steam_overlay): steam_overlay.visible = false
   if is_instance_valid(steam_toggle): steam_toggle.text = "إظهار البخار"
@@ -777,7 +785,7 @@ func _go_inner(place):
   "الحمام":
    say("الحمام", "اختر روتينًا يوميًا بخصوصية وملابس مناسبة.")
    choice("فتح مشهد الاستحمام", bathing)
-   choice("روتين الاستحمام الكامل (مشاهد البخار الجديدة)", func(): full_bath(0))
+   choice("روتين الاستحمام الكامل", func(): live_shower(0))
    choice("العناية بالبشرة (+5 مزاج)", skincare)
    choice("ارتداء ملابس بعد الاستحمام", wardrobe)
    choice("رجوع للمنزل", func(): go("المنزل"))
@@ -932,6 +940,12 @@ var steam_density := 1     # 0 خفيف، 1 متوسط، 2 كثيف (يحجب ا
 var fx_layer: Control = null
 var _fog_tex: Texture2D = null
 var _fx_key := ""
+# مكان الدش الزجاجي في خلفية الحمام (نِسَب من الشاشة) — ليان تستحم هنا خلف الزجاج
+const SHOWER_RECT := [0.045, 0.17, 0.29, 0.66]
+const TUB_RECT := [0.80, 0.62, 0.20, 0.20]
+var bath_mode := ""
+var scene_layer: Control = null
+var _sh := {}
 var current_cg_path := ""
 var _shadow_tex: Texture2D = null
 func shadow_texture() -> Texture2D:
@@ -1110,11 +1124,12 @@ const FULL_BATH := [
 
 func full_bath(i: int):
  location = "الحمام"
+ set_background("الحمام")
  var st: Array = FULL_BATH[i]
  if st[0] == "steam":
   steam_visible = true
+  bath_mode = "shower"
   show_pose("steam/" + str(st[1]))
-  if is_instance_valid(bg_tex): bg_tex.modulate = Color(0.6, 0.6, 0.66)
  else:
   pose_override = ""
   var p := wide_path("res://assets/bathing/" + str(st[1]))
@@ -1786,8 +1801,14 @@ func refresh_cards():
   if full_body:
    lift = vh * 0.175
    if not ("/exercise/" in path): h = minf(h * 0.775, vh * 0.72)
+  var in_shower: bool = is_steam and location == "الحمام" and not cg_frame.visible
   if is_steam:
    h = minf(vh * 0.98, vw * 0.92 * float(tex.get_height()) / float(tex.get_width()))
+  if in_shower:
+   # داخل الدش الزجاجي على اليسار في خلفية حمام ليان
+   var sr: Array = SHOWER_RECT
+   h = minf(vh * float(sr[3]) * 0.86, vw * float(sr[2]) * 0.94 * float(tex.get_height()) / float(tex.get_width()))
+   lift = vh * (1.0 - float(sr[1]) - float(sr[3])) + vh * 0.04
   var w: float = h * float(tex.get_width()) / float(tex.get_height())
   var sh_node: Control = null
   if full_body:
@@ -1813,6 +1834,7 @@ func refresh_cards():
   b.ignore_texture_size = true
   b.stretch_mode = TextureButton.STRETCH_SCALE
   var cx_a: float = 0.56 if is_steam else cs[i]
+  if in_shower: cx_a = float(SHOWER_RECT[0]) + float(SHOWER_RECT[2]) * 0.5
   b.anchor_left = cx_a
   b.anchor_right = cx_a
   b.anchor_top = 1.0
@@ -1903,7 +1925,6 @@ func animate_sprite(b: Control, npc: String, path: String, w: float, h: float):
  var tin := b.create_tween().set_parallel(true)
  tin.tween_property(b, "modulate:a", 1.0, 0.4)
  tin.tween_property(b, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
- tws.append(tin)
  # تنفس
  var tb := b.create_tween().set_loops()
  tb.tween_interval(0.4 + phase)
@@ -1983,16 +2004,35 @@ func spawn_fog(count: int, cx: float, cy: float, spread_x: float, spread_y: floa
 func refresh_fx(force := false):
  if not is_instance_valid(fx_layer): return
  var mode := "none"
- var steam_scene: bool = location == "الحمام" and steam_visible and (pose_override.begins_with("steam/") or (cg_frame.visible and "bathing" in current_cg_path))
+ var steam_scene: bool = location == "الحمام" and steam_visible and (pose_override.begins_with("steam/") or (cg_frame.visible and "bathing" in current_cg_path) or (bath_mode == "tub" and not explore_mode))
  var ghost_scene: bool = ("/ghost/" in current_cg_path) or sprite_nodes.has("الشبح")
  if steam_scene: mode = "steam"
  elif ghost_scene: mode = "ghost"
- var key := "%s|%d|%d" % [mode, steam_density, fx_level]
+ var key := "%s|%s|%s|%d|%d" % [mode, bath_mode, pose_override, steam_density, fx_level]
  if key == _fx_key and not force: return
  _fx_key = key
  clear_fx()
  if fx_level == 0 or mode == "none": return
  var low := 0.5 if fx_level == 1 else 1.0
+ if mode == "steam" and bath_mode == "tub" and not cg_frame.visible:
+  spawn_fog_rect(TUB_RECT, [5, 8, 12][steam_density], [0.35, 0.55, 0.8][steam_density], 0.0)
+  return
+ if mode == "steam" and pose_override.begins_with("steam/") and not cg_frame.visible:
+  # زجاج مضبب فوق الدش + بخار داخله. الكثافة القصوى تغطي ليان بالكامل.
+  spawn_fog_rect(SHOWER_RECT, [5, 8, 12][steam_density], [0.28, 0.45, 0.7][steam_density], [0.08, 0.14, 0.22][steam_density])
+  if steam_density == 2:
+   var sr: Array = SHOWER_RECT
+   for i in 4:
+    var t := TextureRect.new()
+    t.texture = fog_texture()
+    t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    t.stretch_mode = TextureRect.STRETCH_SCALE
+    t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    t.size = Vector2(1280.0 * float(sr[2]) * 1.5, 720.0 * float(sr[3]) * 0.9)
+    t.position = Vector2(1280.0 * (float(sr[0]) + float(sr[2]) * 0.5) - t.size.x * 0.5, 720.0 * (float(sr[1]) + float(sr[3]) * (0.12 + 0.2 * i)) - t.size.y * 0.35)
+    t.modulate = Color(1.0, 0.95, 0.93, 1.0)
+    fx_layer.add_child(t)
+  return
  if mode == "steam":
   var counts := [4, 7, 11]
   var alphas := [0.22, 0.38, 0.55]
@@ -2011,6 +2051,22 @@ func refresh_fx(force := false):
     fx_layer.add_child(t)
  elif mode == "ghost":
   spawn_fog(maxi(2, int(5 * low)), 0.6, 0.62, 380, 200, 380, 620, Color(0.66, 0.76, 1.0), 0.20)
+
+# بخار محصور داخل مستطيل (الدش أو البانيو) + طبقة زجاج مضبب اختيارية
+func spawn_fog_rect(rr: Array, count: int, alpha: float, glass: float):
+ var low := 0.5 if fx_level == 1 else 1.0
+ var x0 := 1280.0 * float(rr[0])
+ var y0 := 720.0 * float(rr[1])
+ var w := 1280.0 * float(rr[2])
+ var hh := 720.0 * float(rr[3])
+ if glass > 0.0:
+  var g := ColorRect.new()
+  g.color = Color(0.92, 0.96, 1.0, glass)
+  g.mouse_filter = Control.MOUSE_FILTER_IGNORE
+  g.position = Vector2(x0, y0)
+  g.size = Vector2(w, hh)
+  fx_layer.add_child(g)
+ spawn_fog(maxi(2, int(count * low)), float(rr[0]) + float(rr[2]) * 0.5, float(rr[1]) + float(rr[3]) * 0.5, w * 0.32, hh * 0.32, w * 0.55, w * 0.95, Color(1.0, 0.94, 0.92), alpha)
 
 func cycle_steam_density():
  steam_density = (steam_density + 1) % 3
@@ -2613,9 +2669,14 @@ func refresh_hotspots():
  if not on:
   choice_scroll.visible = true
   choice_scroll.anchor_top = 0.21
+  # وقت الاستحمام الحي: الأزرار يمين الشاشة علشان ما تغطي الدش (يسار)
+  choice_scroll.anchor_left = 0.55 if bath_mode == "live" else 0.015
+  choice_scroll.anchor_right = 0.985 if bath_mode == "live" else 0.5
   return
  var rd: Dictionary = RoomsData.ROOMS[location]
  var hs: Array = rd["hotspots"]
+ choice_scroll.anchor_left = 0.015
+ choice_scroll.anchor_right = 0.5
  choice_scroll.visible = menu_open or hs.is_empty()
  choice_scroll.anchor_top = 0.31
  menu_btn.text = "إخفاء القائمة" if choice_scroll.visible else "كل الأنشطة"
@@ -2828,7 +2889,7 @@ func hotspot_action(act: String):
    back_choice()
   "shower":
    say("الدش", "روتين الاستحمام بخصوصية؛ البخار يغطي المشهد.")
-   choice("روتين الاستحمام الكامل", func(): full_bath(0))
+   choice("روتين الاستحمام الكامل", func(): live_shower(0))
    choice("دش سريع", bathing)
    choice("كثافة البخار: " + steam_density_name(), func():
     cycle_steam_density()
@@ -2946,12 +3007,14 @@ func face_mask():
 # حمام البانيو: البخار كثيف ويغطي الشخصية بالكامل
 func tub_bath():
  location = "الحمام"
+ set_background("الحمام")
  steam_visible = true
- var old_density := steam_density
- steam_density = 2
- show_pose("steam/s08")
- steam_density = old_density
- if is_instance_valid(bg_tex): bg_tex.modulate = Color(0.6, 0.6, 0.66)
+ bath_mode = "tub"
+ pose_override = ""
+ sprite_focus = []
+ explore_mode = false
+ clear_cg()
+ refresh_cards()
  layan_activity = "تسترخي في البانيو"
  layan_tiredness = maxi(0, layan_tiredness - 25)
  energy = mini(100, energy + 6)
@@ -3237,3 +3300,302 @@ func baby_menu():
  choice("سولف مع ليان", talk)
  choice("رجوع", func(): go(location))
  update_status()
+
+
+# ================= استحمام حي: ليان تدخل الحمام وتستحم ورا زجاج الدش =================
+# الشخصية صورتها الكاملة نفسها؛ ورا الزجاج تتحول لظل ناعم (بدون تفاصيل) والزجاج المضبب يغبّش اللي وراه.
+const LIVE_SHOWER := [
+ ["enter", "تدخل ليان الحمام وتسكّر الباب وراها."],
+ ["water", "تفتح الماء الدافي، ويبدأ البخار يطلع."],
+ ["inside", "تدخل ورا زجاج الدش... والبخار يغطي المكان."],
+ ["hair", "تغسل شعرها بهدوء."],
+ ["rinse", "تشطف الشامبو وتميل براسها."],
+ ["turn", "تلتفت والماء ينزل على كتوفها."],
+ ["relax", "توقف شوي وتستمتع بالماء الدافي."],
+ ["off", "تسكّر الماء، والبخار يخف شوي شوي."]
+]
+const SIL_SHADER := """
+shader_type canvas_item;
+uniform float amount : hint_range(0.0, 1.0) = 0.0;
+uniform vec4 tint : source_color = vec4(0.95, 0.80, 0.72, 1.0);
+void fragment() {
+	vec2 px = TEXTURE_PIXEL_SIZE * (1.0 + 7.0 * amount);
+	vec4 acc = vec4(0.0);
+	for (int x = -2; x <= 2; x++) {
+		for (int y = -2; y <= 2; y++) {
+			acc += texture(TEXTURE, UV + vec2(float(x), float(y)) * px);
+		}
+	}
+	acc /= 25.0;
+	vec4 orig = texture(TEXTURE, UV);
+	vec3 sil = mix(acc.rgb, tint.rgb, 0.82);
+	COLOR.rgb = mix(orig.rgb, sil, amount);
+	COLOR.a = mix(orig.a, acc.a * 0.9, amount);
+}
+"""
+const GLASS_SHADER := """
+shader_type canvas_item;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
+uniform float strength = 0.0;
+void fragment() {
+	vec2 ps = SCREEN_PIXEL_SIZE * (1.0 + 5.0 * strength);
+	vec4 acc = vec4(0.0);
+	for (int x = -2; x <= 2; x++) {
+		for (int y = -2; y <= 2; y++) {
+			acc += texture(screen_tex, SCREEN_UV + vec2(float(x), float(y)) * ps);
+		}
+	}
+	acc /= 25.0;
+	vec3 frost = vec3(0.93, 0.96, 1.0);
+	COLOR = vec4(mix(acc.rgb, frost, 0.16 * strength), 1.0);
+}
+"""
+
+func shower_clear():
+ if is_instance_valid(scene_layer):
+  for c in scene_layer.get_children():
+   scene_layer.remove_child(c)
+   c.queue_free()
+ _sh = {}
+
+func _shower_rect_px() -> Rect2:
+ var sr: Array = SHOWER_RECT
+ return Rect2(1280.0 * float(sr[0]), 720.0 * float(sr[1]), 1280.0 * float(sr[2]), 720.0 * float(sr[3]))
+
+func _shower_setup():
+ shower_clear()
+ location = "الحمام"
+ set_background("الحمام")
+ clear_cg()
+ bath_mode = "live"
+ pose_override = ""
+ sprites_layer.visible = false
+ clear_fx()
+ _fx_key = ""
+ var tex: Texture2D = load(layan_sprite_path())
+ var fig := TextureRect.new()
+ fig.name = "Layan"
+ fig.texture = tex
+ fig.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+ fig.stretch_mode = TextureRect.STRETCH_SCALE
+ fig.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ var h := 720.0 * 0.6
+ var w := h * float(tex.get_width()) / float(tex.get_height())
+ fig.size = Vector2(w, h)
+ fig.pivot_offset = Vector2(w * 0.5, h)
+ fig.position = Vector2(1300.0, 720.0 * 0.86 - h)
+ var mat := ShaderMaterial.new()
+ var sh := Shader.new()
+ sh.code = SIL_SHADER
+ mat.shader = sh
+ fig.material = mat
+ scene_layer.add_child(fig)
+ _sh["fig"] = fig
+ var drops := Control.new()
+ drops.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ drops.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ scene_layer.add_child(drops)
+ _sh["drops"] = drops
+ var r := _shower_rect_px()
+ var glass := ColorRect.new()
+ glass.position = r.position
+ glass.size = r.size
+ glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ var gm := ShaderMaterial.new()
+ var gs := Shader.new()
+ gs.code = GLASS_SHADER
+ gm.shader = gs
+ gm.set_shader_parameter("strength", 0.0)
+ glass.material = gm
+ scene_layer.add_child(glass)
+ _sh["glass"] = glass
+ var steam := Control.new()
+ steam.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ steam.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ steam.modulate.a = 0.0
+ scene_layer.add_child(steam)
+ _sh["steam"] = steam
+ _shower_build_steam()
+
+func _shower_build_steam():
+ var steam: Control = _sh.get("steam")
+ if steam == null: return
+ for c in steam.get_children():
+  steam.remove_child(c)
+  c.queue_free()
+ var r := _shower_rect_px()
+ var n: int = [6, 9, 13][steam_density]
+ if fx_level == 1: n = maxi(3, n / 2)
+ var a: float = [0.3, 0.55, 1.0][steam_density]
+ for i in n:
+  var t := TextureRect.new()
+  t.texture = fog_texture()
+  t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+  t.stretch_mode = TextureRect.STRETCH_SCALE
+  t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+  var s := randf_range(r.size.x * 0.6, r.size.x * 1.1)
+  t.size = Vector2(s, s * 0.85)
+  t.position = Vector2(r.position.x + randf_range(-0.2, 0.8) * r.size.x - s * 0.25, r.position.y + randf_range(0.0, 0.85) * r.size.y - s * 0.3)
+  t.modulate = Color(1.0, 0.95, 0.93, a * randf_range(0.55, 0.9))
+  steam.add_child(t)
+  if fx_level > 0:
+   var tw := t.create_tween().set_loops()
+   var dur := randf_range(5.0, 9.0)
+   var dx := randf_range(20.0, 45.0) * (1.0 if i % 2 == 0 else -1.0)
+   tw.tween_property(t, "position", t.position + Vector2(dx, -randf_range(15.0, 35.0)), dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+   tw.tween_property(t, "position", t.position, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+ if steam_density == 2:
+  # أقصى كثافة: بخار كثيف يغطي ليان بالكامل داخل الدش
+  for i in 3:
+   var t := TextureRect.new()
+   t.texture = fog_texture()
+   t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+   t.stretch_mode = TextureRect.STRETCH_SCALE
+   t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+   t.size = Vector2(r.size.x * 1.6, r.size.y * 0.75)
+   t.position = Vector2(r.position.x + r.size.x * 0.5 - t.size.x * 0.5, r.position.y + r.size.y * (0.05 + 0.3 * i) - t.size.y * 0.2)
+   t.modulate = Color(1.0, 0.95, 0.93, 1.0)
+   steam.add_child(t)
+
+func _shower_water(on: bool):
+ var drops: Control = _sh.get("drops")
+ if drops == null: return
+ for c in drops.get_children():
+  drops.remove_child(c)
+  c.queue_free()
+ if not on or fx_level == 0: return
+ var r := _shower_rect_px()
+ var head := Vector2(r.position.x + r.size.x * 0.36, r.position.y + r.size.y * 0.14)
+ var n := 26 if fx_level == 2 else 12
+ for i in n:
+  var d := ColorRect.new()
+  d.color = Color(0.85, 0.93, 1.0, randf_range(0.25, 0.55))
+  d.size = Vector2(2, randf_range(10.0, 22.0))
+  d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+  var x := head.x + randf_range(-r.size.x * 0.2, r.size.x * 0.2)
+  d.position = Vector2(x, head.y)
+  drops.add_child(d)
+  var tw := d.create_tween().set_loops()
+  tw.tween_interval(randf_range(0.0, 0.6))
+  tw.tween_property(d, "position:y", r.position.y + r.size.y * 0.97, randf_range(0.45, 0.7)).from(head.y)
+  tw.tween_callback(func(): d.position.x = head.x + randf_range(-r.size.x * 0.2, r.size.x * 0.2))
+
+func _shower_gesture(kind: String):
+ var fig: TextureRect = _sh.get("fig")
+ if fig == null or fx_level == 0: return
+ if _sh.has("gesture"):
+  var old = _sh["gesture"]
+  if old is Tween and old.is_valid(): old.kill()
+ fig.rotation_degrees = 0.0
+ var tw := fig.create_tween().set_loops()
+ match kind:
+  "hair":
+   tw.tween_property(fig, "scale", Vector2(1.0, 1.025), 0.45).set_trans(Tween.TRANS_SINE)
+   tw.parallel().tween_property(fig, "rotation_degrees", -1.6, 0.45)
+   tw.tween_property(fig, "scale", Vector2.ONE, 0.45).set_trans(Tween.TRANS_SINE)
+   tw.parallel().tween_property(fig, "rotation_degrees", 1.2, 0.45)
+  "rinse":
+   tw.tween_property(fig, "rotation_degrees", 3.0, 1.2).set_trans(Tween.TRANS_SINE)
+   tw.tween_property(fig, "rotation_degrees", -1.0, 1.2).set_trans(Tween.TRANS_SINE)
+  "turn":
+   tw.tween_property(fig, "scale:x", 0.0, 0.35)
+   tw.tween_callback(func(): fig.flip_h = not fig.flip_h)
+   tw.tween_property(fig, "scale:x", 1.0, 0.35)
+   tw.tween_interval(2.2)
+  _:
+   tw.tween_property(fig, "scale", Vector2(1.012, 1.02), 1.8).set_trans(Tween.TRANS_SINE)
+   tw.tween_property(fig, "scale", Vector2.ONE, 1.8).set_trans(Tween.TRANS_SINE)
+ _sh["gesture"] = tw
+
+func _shower_walk(to_x: float, dur: float, then: Callable = Callable()):
+ var fig: TextureRect = _sh.get("fig")
+ if fig == null: return
+ var tw := fig.create_tween()
+ tw.tween_property(fig, "position:x", to_x, dur if fx_level > 0 else 0.01).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+ if fx_level > 0:
+  var bob := fig.create_tween()
+  var steps := maxi(2, int(dur / 0.3))
+  for i in steps:
+   bob.tween_property(fig, "rotation_degrees", 1.6 if i % 2 == 0 else -1.6, dur / steps * 0.5)
+   bob.tween_property(fig, "rotation_degrees", 0.0, dur / steps * 0.5)
+ if then.is_valid(): tw.finished.connect(then)
+
+func live_shower(i: int):
+ var st: Array = LIVE_SHOWER[i]
+ var act: String = st[0]
+ if i == 0 or not _sh.has("fig"):
+  _shower_setup()
+ var fig: TextureRect = _sh.get("fig")
+ var r := _shower_rect_px()
+ steam_visible = true
+ layan_activity = "تستحم في الحمام"
+ match act:
+  "enter":
+   _shower_walk(1280.0 * 0.6 - fig.size.x * 0.5, 1.6)
+  "water":
+   _shower_water(true)
+   var steam: Control = _sh["steam"]
+   steam.create_tween().tween_property(steam, "modulate:a", 0.45, 2.5)
+  "inside":
+   if not (_sh.get("drops") as Control).get_child_count(): _shower_water(true)
+   var target_x := r.position.x + r.size.x * 0.5 - fig.size.x * 0.46
+   fig.create_tween().tween_property(fig, "scale", Vector2(0.94, 0.94), 1.4)
+   _shower_walk(target_x, 1.4, func():
+    var mat: ShaderMaterial = fig.material
+    fig.create_tween().tween_method(func(v): mat.set_shader_parameter("amount", v), 0.0, 1.0, 0.9)
+    var gm: ShaderMaterial = (_sh["glass"] as ColorRect).material
+    fig.create_tween().tween_method(func(v): gm.set_shader_parameter("strength", v), 0.0, 1.0, 1.2)
+    var steam: Control = _sh["steam"]
+    steam.create_tween().tween_property(steam, "modulate:a", 1.0, 2.5)
+    _shower_gesture("relax"))
+  "off":
+   _shower_water(false)
+   _shower_gesture("relax")
+   var steam: Control = _sh["steam"]
+   steam.create_tween().tween_property(steam, "modulate:a", 0.4, 2.5)
+  _:
+   _instant_inside()
+   _shower_gesture(act)
+ say("ليان", str(st[1]))
+ note.text = "استحمام %d/%d" % [i + 1, LIVE_SHOWER.size()]
+ if i < LIVE_SHOWER.size() - 1:
+  choice("التالي", func(): live_shower(i + 1))
+ else:
+  choice("تاخذ المنشفة", live_shower_end)
+ choice("كثافة البخار: " + steam_density_name(), func():
+  cycle_steam_density()
+  _shower_build_steam()
+  say("ليان", str(st[1]))
+  live_shower_menu(i))
+ choice("إنهاء الروتين", live_shower_end)
+ update_status()
+
+func live_shower_menu(i: int):
+ if i < LIVE_SHOWER.size() - 1:
+  choice("التالي", func(): live_shower(i + 1))
+ else:
+  choice("تاخذ المنشفة", live_shower_end)
+ choice("كثافة البخار: " + steam_density_name(), func():
+  cycle_steam_density()
+  _shower_build_steam()
+  say("ليان", str(LIVE_SHOWER[i][1]))
+  live_shower_menu(i))
+ choice("إنهاء الروتين", live_shower_end)
+
+# إذا اللاعب تخطى خطوات: نحطها داخل الدش مباشرة
+func _instant_inside():
+ var fig: TextureRect = _sh.get("fig")
+ if fig == null: return
+ var r := _shower_rect_px()
+ fig.position.x = r.position.x + r.size.x * 0.5 - fig.size.x * 0.46
+ fig.scale = Vector2(0.94, 0.94)
+ (fig.material as ShaderMaterial).set_shader_parameter("amount", 1.0)
+ ((_sh["glass"] as ColorRect).material as ShaderMaterial).set_shader_parameter("strength", 1.0)
+ (_sh["steam"] as Control).modulate.a = 1.0
+ if (_sh["drops"] as Control).get_child_count() == 0: _shower_water(true)
+
+func live_shower_end():
+ shower_clear()
+ bath_mode = ""
+ sprites_layer.visible = true
+ finish_bathing()
