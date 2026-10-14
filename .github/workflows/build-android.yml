@@ -52,9 +52,10 @@ jobs:
         run: |
           mkdir -p build
           set +e
-          godot --headless --path . --export-debug Android build/HikayatBaytna.apk > export.log 2>&1
+          godot --headless --path . --verbose --export-debug Android build/HikayatBaytna.apk > export.log 2>&1
           rc=$?
-          { ls "$HOME/.local/share/godot/export_templates/4.4.1.stable" | tr '\n' ' '; echo; grep -A6 "configuration errors" export.log; } | grep -v "^\s*$" | head -9 | while IFS= read -r l; do echo "::error::$(printf %s "$l" | cut -c1-400)"; done
+          grep -v -e first_scan -e loading_editor export.log | tail -c 3500 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' > ann.txt
+          echo "::error title=export-log::$(cat ann.txt)"
           ls -la build || true
           exit $rc
 
