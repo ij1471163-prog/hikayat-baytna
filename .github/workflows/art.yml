@@ -32,9 +32,19 @@ jobs:
       - name: Install
         run: |
           pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu
-          pip install --quiet "diffusers==0.30.3" "transformers==4.44.2" accelerate safetensors pillow
+          pip install --quiet diffusers transformers accelerate safetensors pillow
+          python -c "import diffusers, transformers, torch; print('diffusers', diffusers.__version__, 'transformers', transformers.__version__, 'torch', torch.__version__)"
       - name: Draw
-        run: python art/gen.py ${{ matrix.shard }} 8 "${{ github.event.inputs.only }}"
+        run: |
+          set +e
+          python art/gen.py ${{ matrix.shard }} 8 "${{ github.event.inputs.only }}" > gen.log 2>&1
+          rc=$?
+          grep -E "seed|shard|SHARD_DONE" gen.log | while IFS= read -r l; do echo "::notice title=gen::$l"; done
+          if [ $rc -ne 0 ]; then
+            tail -c 3000 gen.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' > ann.txt
+            echo "::error title=gen-log::$(cat ann.txt)"
+          fi
+          exit $rc
       - uses: actions/upload-artifact@v4
         with:
           name: art-${{ matrix.shard }}
