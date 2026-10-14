@@ -1,0 +1,24 @@
+صور تنتظرها اللعبة (لمن يرسم الصور)
+=====================================
+اللعبة جاهزة لهذي الصور: بمجرد ما ترفع ملف بنفس الاسم والمكان يظهر تلقائيًا بدون أي تعديل بالكود.
+إذا الصورة مو موجودة، اللعبة تخفي اللبس من المتجر وتستخدم بديل، فما تخرب.
+
+1) ملابس ليان الجديدة (صورة كاملة من الراس للرجول، واقفة من الأمام، خلفية شفافة PNG، طول تقريبًا 800-1000 بكسل، نفس وجه وشعر ليان)
+   assets/sprites/layan/13_pink_hearts_pajamas.png    بيجامة القلوب الوردية
+   assets/sprites/layan/14_beige_sweater_dress.png    فستان صوف بيج
+   assets/sprites/layan/15_blue_maternity_dress.png   فستان الحمل الأزرق (ليان حامل؛ يظهر في آخر مرحلة من الحمل)
+   assets/sprites/layan/16_teddy_pajamas.png          بيجامة الدباديب
+   assets/sprites/layan/17_gray_lounge_set.png        طقم رياضي رمادي
+   assets/sprites/layan/18_teddy_tshirt.png           تيشيرت الدبدوب
+   assets/sprites/layan/19_yellow_floral_dress.png    فستان أصفر مزهر
+   (ونسخة صغيرة لكل وحدة بنفس الاسم في assets/layan_outfits/ — اختيارية)
+
+2) خلفيات (JPG بعرض 16:9، يفضل 1920x1080، نفس أسلوب خلفيات البيت الدافية)
+   assets/backgrounds/hallway.jpg     ممر الدور العلوي (أبواب غرف)
+   assets/backgrounds/storage.jpg     غرفة التخزين
+   assets/backgrounds/nursery.jpg     غرفة البيبي (تظهر بدل غرفة التخزين بعد تجهيز 3 أغراض للبيبي)
+   assets/backgrounds/hospital.jpg    غرفة ولادة بالمستشفى (تظهر في مشهد الولادة)
+   assets/backgrounds/entrance.jpg    المدخل (الحالية ضبابية)
+
+ملاحظة: نقاط الضغط في الغرف مكتوبة في rooms_data.gd كنِسَب من الشاشة. إذا تغيّرت خلفية غرفة موجودة،
+لازم تتعدل مواقع الأغراض فيها (الكنبة، الباب...) علشان الضغط يجي على المكان الصحيح.

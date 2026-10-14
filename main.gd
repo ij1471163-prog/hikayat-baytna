@@ -20,7 +20,14 @@ var outfit_textures := {
  "بدلة رياضية وردية": "res://assets/layan_outfits/09_pink_tracksuit.png",
  "معطف شتوي": "res://assets/layan_outfits/10_winter_coat_scarf.png",
  "بدلة عمل": "res://assets/layan_outfits/11_office_suit.png",
- "مريول المنزل": "res://assets/layan_outfits/12_home_apron.png"
+ "مريول المنزل": "res://assets/layan_outfits/12_home_apron.png",
+ "بيجامة القلوب الوردية": "res://assets/layan_outfits/13_pink_hearts_pajamas.png",
+ "فستان صوف بيج": "res://assets/layan_outfits/14_beige_sweater_dress.png",
+ "فستان الحمل الأزرق": "res://assets/layan_outfits/15_blue_maternity_dress.png",
+ "بيجامة الدباديب": "res://assets/layan_outfits/16_teddy_pajamas.png",
+ "طقم رياضي رمادي": "res://assets/layan_outfits/17_gray_lounge_set.png",
+ "تيشيرت الدبدوب": "res://assets/layan_outfits/18_teddy_tshirt.png",
+ "فستان أصفر مزهر": "res://assets/layan_outfits/19_yellow_floral_dress.png"
 }
 var laundry := 2
 var energy := 90
@@ -39,6 +46,30 @@ var goal_start_day := 1
 var events_done := 0
 var story_ended := false
 const WorldData = preload("res://world_data.gd")
+const RoomsData = preload("res://rooms_data.gd")
+const TalkData = preload("res://talk_data.gd")
+const FamilyData = preload("res://family_data.gd")
+# نقاط التفاعل داخل الغرف
+var hotspot_layer: Control
+var exits_box: HFlowContainer
+var menu_btn: Button
+var menu_open := false
+var _walking := false
+var _interrupted := false
+var _mask_cache: Dictionary = {}
+# السوالف
+var talks_seen: Array = []
+# قصة المولود
+var preg_stage := 0
+var preg_start := 0
+var preg_flags: Array = []
+var craving := ""
+var craving_bought := ""
+var nursery: Array = []
+var baby_name := ""
+var baby_gender := ""
+var baby_born := 0
+var pre_preg_outfit := ""
 var inventory: Dictionary = {}
 var quest_state: Dictionary = {}
 var quest_day: Dictionary = {}
@@ -146,7 +177,7 @@ func make_stat(title: String, color: Color) -> Array:
  box.add_child(bar)
  return [box, bar]
 
-const BG_FILES := {"المنزل":"living_room","المطبخ":"kitchen","الحمام":"bathroom","غرفة النوم":"bedroom","غرفة ليان":"layan_room","غرفة نورة":"nora_room","الصالة":"living_room","غرفة الاسترخاء":"relax_room","غرفة الغسيل":"laundry","متجر الملابس":"clothes_shop","الحديقة":"garden","العمل":"work","المقهى":"cafe","الشاطئ":"beach","النادي الرياضي":"gym","السوبرماركت":"supermarket","الممر":"entrance","المدخل":"entrance","غرفة التخزين":"entrance"}
+const BG_FILES := {"المنزل":"living_room","المطبخ":"kitchen","الحمام":"bathroom","غرفة النوم":"bedroom","غرفة ليان":"layan_room","غرفة نورة":"nora_room","الصالة":"living_room","غرفة الاسترخاء":"relax_room","غرفة الغسيل":"laundry","متجر الملابس":"clothes_shop","الحديقة":"garden","العمل":"work","المقهى":"cafe","الشاطئ":"beach","النادي الرياضي":"gym","السوبرماركت":"supermarket","الممر":"hallway","المدخل":"entrance","غرفة التخزين":"storage"}
 const PERIOD_TINT := [Color(1, 1, 1), Color(1.0, 1.0, 0.96), Color(1.0, 0.8, 0.66), Color(0.5, 0.55, 0.85)]
 const LAYAN_POSES := {"المطبخ":"cook_pan","غرفة الغسيل":"laundry","الصالة":"sofa_game","العمل":"work","النادي الرياضي":"gym","الشاطئ":"beach_hat","الحديقة":"beach_hat","السوبرماركت":"shopping","المقهى":"cup_pj","الحمام":"towel","غرفة النوم":"pillow_pj","غرفة ليان":"pj_cardigan","غرفة الاسترخاء":"towel"}
 const NORA_POSES := {"المطبخ":"apron","غرفة الغسيل":"laundry","غرفة نورة":"pj1","الصالة":"mop","السوبرماركت":"grocery","المقهى":"cups","العمل":"work","الحمام":"towel"}
@@ -215,6 +246,11 @@ func build_ui():
  shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
  shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
  add_child(shade)
+ hotspot_layer = Control.new()
+ hotspot_layer.name = "HotspotLayer"
+ hotspot_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ hotspot_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ add_child(hotspot_layer)
  sprites_layer = Control.new()
  sprites_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
  sprites_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -352,7 +388,7 @@ func build_ui():
  pill.content_margin_top = 4
  pill.content_margin_bottom = 4
  activity_badge.add_theme_stylebox_override("normal", pill)
- activity_badge.text = "🏠 ليان في المنزل"
+ activity_badge.text = "ليان في المنزل"
  add_child(activity_badge)
 
  # ---- choices column (left) + VN dialogue box (bottom)
@@ -369,6 +405,33 @@ func build_ui():
  choices.add_theme_constant_override("h_separation", 10)
  choices.add_theme_constant_override("v_separation", 8)
  choice_scroll.add_child(choices)
+ menu_btn = Button.new()
+ menu_btn.name = "RoomMenuButton"
+ menu_btn.text = "كل الأنشطة"
+ menu_btn.anchor_left = 0.015
+ menu_btn.anchor_top = 0.235
+ menu_btn.offset_right = 230
+ menu_btn.offset_bottom = 52
+ menu_btn.add_theme_font_size_override("font_size", 19)
+ menu_btn.focus_mode = Control.FOCUS_NONE
+ menu_btn.visible = false
+ menu_btn.pressed.connect(func():
+  menu_open = not menu_open
+  refresh_hotspots())
+ add_child(menu_btn)
+ exits_box = HFlowContainer.new()
+ exits_box.name = "RoomExits"
+ exits_box.anchor_left = 0.015
+ exits_box.anchor_right = 0.66
+ exits_box.anchor_top = 0.805
+ exits_box.anchor_bottom = 0.805
+ exits_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
+ exits_box.offset_top = -56
+ exits_box.offset_bottom = -6
+ exits_box.add_theme_constant_override("h_separation", 8)
+ exits_box.add_theme_constant_override("v_separation", 6)
+ exits_box.visible = false
+ add_child(exits_box)
  var sheet = PanelContainer.new()
  sheet.anchor_left = 0.015
  sheet.anchor_right = 0.985
@@ -488,18 +551,18 @@ func update_status():
  rel_bar.value = relationship
  energy_bar.value = energy
  loc_label.text = location
- steam_toggle.visible = (location == "الحمام")
+ steam_toggle.visible = (location == "الحمام") and not room_active()
  if is_instance_valid(activity_badge):
   activity_badge.text = activity_emoji() + " " + layan_activity
 
 func activity_emoji() -> String:
- if "تأكل" in layan_activity: return "🍽️"
- if "تشرب" in layan_activity: return "🥤"
- if "تطبخ" in layan_activity: return "🍳"
- if "جالسة" in layan_activity or "تستريح" in layan_activity: return "🛋️"
- if "نائمة" in layan_activity: return "💤"
- if "زوجها" in layan_activity: return "💬"
- return "🏠"
+ if "تأكل" in layan_activity: return ""
+ if "تشرب" in layan_activity: return ""
+ if "تطبخ" in layan_activity: return ""
+ if "جالسة" in layan_activity or "تستريح" in layan_activity: return ""
+ if "نائمة" in layan_activity: return ""
+ if "زوجها" in layan_activity: return ""
+ return ""
 
 # Lightweight visual feedback for the selected action; this is not frame-by-frame character animation.
 func show_layan_action(kind: String):
@@ -524,6 +587,7 @@ func say(who, text):
  clear_choices()
  explore_mode = false
  if is_instance_valid(choice_scroll): choice_scroll.scroll_vertical = 0
+ refresh_hotspots()
 
 func choice(text, action: Callable):
  var b = Button.new()
@@ -596,6 +660,7 @@ func show_cg(tex):
  cg_frame.visible = true
  sprites_layer.visible = false
  refresh_fx()
+ refresh_hotspots()
 
 func clear_cg():
  if not is_instance_valid(cg_frame): return
@@ -603,20 +668,25 @@ func clear_cg():
  cg_frame.visible = false
  current_cg_path = ""
  sprites_layer.visible = true
+ refresh_hotspots()
 
 func layan_sprite_path() -> String:
  if pose_override.begins_with("exercise/") or pose_override.begins_with("steam/"):
   return "res://assets/sprites/%s.png" % pose_override
  if pose_override != "":
   return "res://assets/sprites/poses/%s.png" % pose_override
- if not outfit_view and LAYAN_POSES.has(location):
+ # داخل البيت: ليان تظهر باللبس اللي لابسته (حتى الجديد). برا البيت: صورة تناسب المكان (نادي، شغل، بحر...)
+ if not outfit_view and LAYAN_POSES.has(location) and not (location in WorldData.HOUSE_PLACES):
   var pp := "res://assets/sprites/poses/%s.png" % LAYAN_POSES[location]
   if ResourceLoader.exists(pp): return pp
- var tp: String = str(outfit_textures.get(outfit, "res://assets/layan_outfits/01_pink_home_pajamas.png"))
- return tp.replace("layan_outfits", "sprites/layan")
+ var tp: String = str(outfit_textures.get(outfit, "res://assets/layan_outfits/01_pink_home_pajamas.png")).replace("layan_outfits", "sprites/layan")
+ if not ResourceLoader.exists(tp): tp = "res://assets/sprites/layan/01_pink_home_pajamas.png"
+ return tp
 
 func set_background(place):
  var n: String = str(BG_FILES.get(place, "city"))
+ if place == "غرفة التخزين" and nursery.size() >= 3 and ResourceLoader.exists("res://assets/backgrounds/nursery.jpg"): n = "nursery"
+ if not ResourceLoader.exists("res://assets/backgrounds/%s.jpg" % n) and not ResourceLoader.exists("res://assets/backgrounds/%s.png" % n): n = "entrance"
  var ai := "res://assets/backgrounds_ai/%s.jpg" % n
  if ResourceLoader.exists(ai):
   bg_tex.texture = load(ai)
@@ -648,15 +718,28 @@ func go(place):
  pose_override = ""
  outfit_view = false
  sprite_focus = []
+ menu_open = false
+ _walking = false
+ _interrupted = false
  _go_inner(place)
- if place in ["المطبخ", "الصالة", "غرفة النوم", "غرفة ليان"] and not layan_here(place) and is_instance_valid(note):
+ if _interrupted:
+  _interrupted = false
+  explore_mode = false
+  refresh_cards()
+  return
+ if place in ["المنزل", "المطبخ", "الصالة", "غرفة النوم", "غرفة ليان"] and not layan_here(place) and is_instance_valid(note):
   note.text = "ليان مو هنا الحين؛ هي في %s." % str(npc_sched("ليان")[period])
  explore_mode = true
  refresh_cards()
+ room_intro()
 
 func _go_inner(place):
  location = place
+ if place in WorldData.HOUSE_PLACES and family_check():
+  _interrupted = true
+  return
  if place == "المنزل" and check_scenes():
+  _interrupted = true
   return
  if place != "الحمام":
   restore_outfit_portrait()
@@ -669,7 +752,15 @@ func _go_inner(place):
  match place:
   "المنزل":
    say("ليان — زوجتك", "أهلًا! تقدر تتفاعل معي، تختار ملابس، أو تدير شؤون البيت.")
-   choice("تفاعل مع ليان", interact)
+   if layan_here("المنزل"):
+    choice("تفاعل مع ليان", interact)
+   else:
+    var lr: String = str(npc_sched("ليان")[period])
+    choice("روح لليان (في %s)" % lr, func(): go(lr))
+   if preg_stage >= 1 and preg_stage <= 3:
+    choice("ليان والحمل", preg_menu)
+   elif preg_stage == 4:
+    choice("" + baby_name, baby_menu)
    choice("روتين ليان اليومي", layan_routine)
    choice("افتح خزانة الملابس", wardrobe)
    choice("رتب غرفة الجلوس", clean)
@@ -747,6 +838,8 @@ func _go_inner(place):
   "غرفة التخزين":
    say("غرفة التخزين", "مكان أدوات التنظيف ومستلزمات البيت.")
    choice("ترتيب أدوات التنظيف (+10% نظافة، -3 طاقة)", organize_storage)
+   if preg_stage >= 2:
+    choice("تجهيز غرفة البيبي", nursery_menu)
    choice("العودة للممر", func(): go("الممر"))
   "العمل":
    say("مكان العمل", "أنجز مهمة اليوم لتحصل على راتب.")
@@ -784,6 +877,8 @@ func _go_inner(place):
   "السوبرماركت":
    say("السوبرماركت", "اشترِ احتياجات المنزل أو أغراضًا للهدايا.")
    choice("تسوق أغراض وهدايا", open_shop)
+   if craving != "" and craving_bought != craving:
+    choice("اشتر وحم ليان: %s (-%d ريال)" % [craving, FamilyData.CRAVING_COST], buy_craving)
    choice("مشتريات المنزل (-40 ريال)", groceries)
    choice("متجر الملابس", func(): go("متجر الملابس"))
    choice("رجوع للمنزل", func(): go("المنزل"))
@@ -803,7 +898,7 @@ func layan_eat():
  layan_thirst = mini(100, layan_thirst + 5)
  layan_activity = "تأكل وجبة في المطبخ"
  kitchen_texture("11_taste.png")
- show_layan_action("🍽️ ليان تتناول وجبتها")
+ show_layan_action("ليان تتناول وجبتها")
  mood = "راضية"
  note.text = "ليان أكلت وجبة، وانخفض شعورها بالجوع."
  say("ليان", "الأكل كان لذيذًا، الحين أحس أني أفضل.")
@@ -876,7 +971,7 @@ func cook_step(i: int):
  var st = cook_steps[i]
  kitchen_texture(st[0])
  layan_activity = "تطبخ: " + st[1]
- show_layan_action("🍳 " + st[1])
+ show_layan_action("" + st[1])
  note.text = "خطوة %d من %d — %s" % [i + 1, cook_steps.size(), st[1]]
  say("ليان", st[2])
  if i < cook_steps.size() - 1:
@@ -907,7 +1002,7 @@ func finish_cooking():
 func layan_drink():
  layan_thirst = maxi(0, layan_thirst - 40)
  layan_activity = "تشرب الماء"
- show_layan_action("🥤 ليان تشرب الماء")
+ show_layan_action("ليان تشرب الماء")
  mood = "منتعشة"
  note.text = "شربت ليان الماء وانخفض العطش."
  say("ليان", "شرب الماء ريّحني.")
@@ -943,7 +1038,7 @@ func beach_walk():
 func layan_sit():
  layan_activity = "جالسة تستريح في الصالة"
  scene_texture("03_living_room_tv.png")
- show_layan_action("🛋️ ليان تجلس وتسترخي")
+ show_layan_action("ليان تجلس وتسترخي")
  layan_tiredness = maxi(0, layan_tiredness - 18)
  mood = "مرتاحة"
  note.text = "جلست ليان قليلًا واستعادت بعض نشاطها."
@@ -956,7 +1051,7 @@ func layan_sit():
 
 func layan_sleep():
  layan_activity = "نائمة في غرفة النوم"
- show_layan_action("💤 ليان نامت لترتاح")
+ show_layan_action("ليان نامت لترتاح")
  layan_tiredness = maxi(0, layan_tiredness - 55)
  layan_hunger = mini(100, layan_hunger + 12)
  layan_thirst = mini(100, layan_thirst + 10)
@@ -973,7 +1068,7 @@ func layan_sleep():
 
 func layan_interact():
  layan_activity = "تقضي وقتًا مع زوجها"
- show_layan_action("💬 ليان تتفاعل مع زوجها")
+ show_layan_action("ليان تتفاعل مع زوجها")
  relationship = mini(100, relationship + 2)
  layan_tiredness = mini(100, layan_tiredness + 2)
  note.text = "قضيت وقتًا مع ليان؛ تحسنت العلاقة قليلًا."
@@ -1171,7 +1266,7 @@ func relax():
 
 func tv_time():
  scene_texture("03_living_room_tv.png")
- relationship = mini(100, relationship + 3)
+ rel_once("tv", 3)
  energy = mini(100, energy + 4)
  note.text = "شاهدتما برنامجًا معًا وتحدثتما عنه."
  say("ليان", "حلو نقضي وقت هادئ مع بعض.")
@@ -1204,17 +1299,17 @@ func interact():
  choice("رجوع", func(): go("المنزل"))
 
 func talk():
- relationship = mini(100, relationship + 3)
- mood = "سعيدة" if relationship >= 60 else "هادئة"
- say("ليان", "يسعدني نتكلم ونخطط ليومنا مع بعض.")
- choice("نروح متجر الملابس", func(): go("متجر الملابس"))
- choice("نطلع للمقهى", func(): go("المقهى"))
- choice("نرتب البيت", clean)
- choice("رجوع", func(): go("المنزل"))
- update_status()
+ var t := pick_talk()
+ if t.is_empty():
+  relationship = mini(100, relationship + 1)
+  say("ليان", "يسعدني نتكلم ونخطط ليومنا مع بعض.")
+  choice("رجوع", func(): go(location))
+  update_status()
+  return
+ talk_line(t, 0)
 
 func hold_hand():
- relationship = mini(100, relationship + 2)
+ rel_once("hand", 2)
  mood = "مبسوطة"
  note.text = "ليان ابتسمت وتفاعلت بود. (حركة مرسومة يمكن إضافتها لاحقًا)"
  say("ليان", "لحظة لطيفة بين الزوجين.")
@@ -1222,7 +1317,7 @@ func hold_hand():
  update_status()
 
 func hug():
- relationship = mini(100, relationship + 4)
+ rel_once("hug", 4)
  mood = "سعيدة"
  note.text = "اختيار تفاعل ودي. يحتاج مشهد مرسوم خاص للحركة."
  say("ليان", "ابتسمت ليان وتبادلت معك عناقًا لطيفًا.")
@@ -1238,22 +1333,25 @@ func wardrobe():
 
 func wear(item):
  outfit = item
+ if is_instance_valid(note): note.text = "ليان ارتدت %s، وبيظهر عليها في كل غرف البيت." % item
  clear_cg()
  pose_override = ""
  outfit_view = true
  sprite_focus = ["ليان"]
  refresh_cards()
- note.text = "ليان ارتدت %s." % item
  update_status()
  wardrobe()
 
 func clothing_shop():
  say("متجر الملابس", "اختر قطعة جديدة لخزانة ليان.")
- var catalog = [["فستان سهرة أحمر",160],["فستان صيفي مزهر",75],["بلوزة وتنورة",90],["طقم محبوك بيج",95],["بدلة رياضية وردية",90],["معطف شتوي",180],["بدلة عمل",130],["مريول المنزل",65]]
+ var catalog = [["فستان سهرة أحمر",160],["فستان صيفي مزهر",75],["بلوزة وتنورة",90],["طقم محبوك بيج",95],["بدلة رياضية وردية",90],["معطف شتوي",180],["بدلة عمل",130],["مريول المنزل",65],["بيجامة القلوب الوردية",85],["فستان صوف بيج",110],["بيجامة الدباديب",70],["طقم رياضي رمادي",95],["تيشيرت الدبدوب",45],["فستان أصفر مزهر",100]]
  for item in catalog:
   var name: String = item[0]
   var price: int = item[1]
-  choice("%s — %d ريال" % [name, price], func(): buy_outfit(name, price))
+  var spr: String = str(outfit_textures.get(name, "")).replace("layan_outfits", "sprites/layan")
+  if spr == "" or not ResourceLoader.exists(spr): continue
+  var owned_tag := " (عندك)" if owned_outfits.has(name) else ""
+  choice("%s — %d ريال%s" % [name, price, owned_tag], func(): buy_outfit(name, price))
  choice("افتح الخزانة", wardrobe)
  choice("رجوع للمنزل", func(): go("المنزل"))
 
@@ -1267,10 +1365,8 @@ func buy_outfit(name, price):
   return
  money -= price
  owned_outfits.append(name)
- outfit = name
- note.text = "اشتريت %s وأضفتها للخزانة." % name
- update_status()
- wardrobe()
+ note.text = "اشتريت %s، وليان لبسته. بيظهر عليها بكل غرف البيت." % name
+ wear(name)
 
 func character_hub():
  say("الشخصيات", "اختر شخصية لزيارتها أو بدء حوار معها. لكل شخصية علاقة مستقلة تتغير مع اختياراتك.")
@@ -1474,6 +1570,7 @@ func tick() -> bool:
  layan_hunger = mini(100, layan_hunger + 8)
  layan_thirst = mini(100, layan_thirst + 7)
  layan_tiredness = mini(100, layan_tiredness + 6)
+ if preg_stage == 3: layan_tiredness = mini(100, layan_tiredness + 4)
  if layan_hunger >= 75:
   layan_activity = "جائعة وتبحث عن وجبة"
  elif layan_thirst >= 75:
@@ -1604,6 +1701,7 @@ func is_weekend() -> bool:
  return wd == 0 or wd == 6   # السبت والجمعة
 
 func npc_sched(npc: String) -> Array:
+ if npc == "ليان" and preg_stage == 3: return ["غرفة النوم", "الصالة", "الصالة", "غرفة النوم"]
  var d: Dictionary = WorldData.NPCS[npc]
  if is_weekend() and d.has("weekend"): return d["weekend"]
  return d["sched"]
@@ -1614,8 +1712,9 @@ func npc_present(npc: String, place: String) -> bool:
 
 # ليان: حاضرة في المنزل (الواجهة) وفي الحمام/الاسترخاء وفي الخروجات معها؛ وفي بقية غرف البيت حسب جدولها
 func layan_here(place: String) -> bool:
- if place == "المنزل" or place == "الحمام" or place == "غرفة الاسترخاء": return true
+ # ليان في مكان واحد فقط: «المنزل» هو نفس الصالة. الحمام وغرفة الاسترخاء تظهر فيها وقت النشاط فقط.
  if not (place in WorldData.HOUSE_PLACES): return true
+ if place == "المنزل": place = "الصالة"
  return npc_sched("ليان")[period] == place
 
 func npc_texture(npc: String):
@@ -1639,6 +1738,7 @@ func sprite_path_for(npc: String) -> String:
 
 func refresh_cards():
  if not is_instance_valid(sprites_layer): return
+ _walking = false
  for c in sprites_layer.get_children():
   sprites_layer.remove_child(c)
   c.queue_free()
@@ -1650,7 +1750,20 @@ func refresh_cards():
   for npc in WorldData.NPCS:
    if (npc == "ليان" and layan_here(location)) or (npc != "ليان" and npc_present(npc, location)): who.append(npc)
  var centers := [[0.74], [0.80, 0.56], [0.82, 0.62, 0.44]]
- var cs: Array = centers[clampi(who.size(), 1, 3) - 1]
+ var cs: Array = centers[clampi(who.size(), 1, 3) - 1].duplicate()
+ if explore_mode and sprite_focus.is_empty() and RoomsData.ROOMS.has(location):
+  var spot: float = float(RoomsData.ROOMS[location].get("spot", 0.74))
+  var others := [spot + 0.24, spot - 0.24, spot + 0.46, spot - 0.46]
+  var k := 0
+  cs = []
+  for npc in who:
+   if npc == "ليان":
+    cs.append(spot)
+   else:
+    var x: float = others[k]
+    if x > 0.88 or x < 0.12: x = others[k + 1] if k + 1 < others.size() else spot
+    cs.append(clampf(x, 0.12, 0.88))
+    k += 1
  var vh: float = get_viewport_rect().size.y
  var vw: float = get_viewport_rect().size.x
  for i in who.size():
@@ -1666,7 +1779,9 @@ func refresh_cards():
   elif "/nora_poses/" in path: h = minf(vh * 0.97, vh * 0.9 * float(tex.get_height()) / 490.0)
   elif "/poses/" in path: h = minf(vh * 0.97, vh * 0.9 * float(tex.get_height()) / 395.0)
   var is_steam: bool = "/steam/" in path
-  var full_body: bool = path.get_base_dir().get_file() != "sprites" and not is_steam
+  var half_body: bool = is_half_body(path)
+  var full_body: bool = path.get_base_dir().get_file() != "sprites" and not is_steam and not half_body
+  if half_body: h = vh * 0.9
   var lift := 0.0
   if full_body:
    lift = vh * 0.175
@@ -1674,8 +1789,10 @@ func refresh_cards():
   if is_steam:
    h = minf(vh * 0.98, vw * 0.92 * float(tex.get_height()) / float(tex.get_width()))
   var w: float = h * float(tex.get_width()) / float(tex.get_height())
+  var sh_node: Control = null
   if full_body:
    var sh := TextureRect.new()
+   sh_node = sh
    sh.texture = shadow_texture()
    sh.stretch_mode = TextureRect.STRETCH_SCALE
    sh.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -1691,6 +1808,8 @@ func refresh_cards():
    sprites_layer.add_child(sh)
   var b = TextureButton.new()
   b.texture_normal = tex
+  b.texture_click_mask = click_mask_for(path, tex)
+  if sh_node != null: b.set_meta("shadow", sh_node)
   b.ignore_texture_size = true
   b.stretch_mode = TextureButton.STRETCH_SCALE
   var cx_a: float = 0.56 if is_steam else cs[i]
@@ -1732,6 +1851,7 @@ func refresh_cards():
    mk.mouse_filter = Control.MOUSE_FILTER_IGNORE
    b.add_child(mk)
  refresh_fx()
+ refresh_hotspots()
 
 # ================= الحركة والمؤثرات =================
 func load_prefs():
@@ -1970,7 +2090,7 @@ func quest_complete(qid: String, st: Dictionary, c: Dictionary):
  var gained := ""
  for it in st.get("give", []): gained += "حصلت على: %s\n" % it
  say(st["npc"], res)
- note.text = ("اكتملت المهمة: %s ✓" if done else "تقدّمت المهمة: %s") % q["title"]
+ note.text = ("اكتملت المهمة: %s " if done else "تقدّمت المهمة: %s") % q["title"]
  if gained != "": dialogue.text = res + "\n" + gained.strip_edges()
  choice("متابعة", func(): go(location))
  update_status()
@@ -2057,7 +2177,7 @@ func open_quests():
   var v = VBoxContainer.new()
   v.add_theme_constant_override("separation", 6)
   m.add_child(v)
-  var status_txt: String = "مكتملة ✓" if idx >= steps.size() else "الخطوة %d من %d" % [idx + 1, steps.size()]
+  var status_txt: String = "مكتملة " if idx >= steps.size() else "الخطوة %d من %d" % [idx + 1, steps.size()]
   add_card_label(v, "%s — %s" % [q["title"], status_txt], 25, GOLD)
   if idx < steps.size():
    add_card_label(v, str(steps[idx]["hint"]), 20, Color("#d8d1c8"))
@@ -2348,7 +2468,7 @@ func story_after_day() -> bool:
  return false
 
 func start_event(ev: Dictionary):
- say("🔔 " + str(ev["title"]), str(ev["text"]))
+ say("" + str(ev["title"]), str(ev["text"]))
  for c in ev["choices"]:
   choice(c["t"], func(): resolve_event(c))
  update_status()
@@ -2423,9 +2543,20 @@ func load_game():
  quest_meta = parsed.get("quest_meta", quest_meta)
  qflags = parsed.get("qflags", qflags)
  skill_pts = parsed.get("skill_pts", skill_pts)
+ talks_seen = parsed.get("talks_seen", talks_seen)
+ preg_stage = int(parsed.get("preg_stage", preg_stage))
+ preg_start = int(parsed.get("preg_start", preg_start))
+ preg_flags = parsed.get("preg_flags", preg_flags)
+ craving = str(parsed.get("craving", craving))
+ craving_bought = str(parsed.get("craving_bought", craving_bought))
+ nursery = parsed.get("nursery", nursery)
+ baby_name = str(parsed.get("baby_name", baby_name))
+ baby_gender = str(parsed.get("baby_gender", baby_gender))
+ baby_born = int(parsed.get("baby_born", baby_born))
+ pre_preg_outfit = str(parsed.get("pre_preg_outfit", pre_preg_outfit))
 
 func save_game():
- var data = {"day":day,"period":period,"money":money,"relationship":relationship,"mood":mood,"outfit":outfit,"owned_outfits":owned_outfits,"laundry":laundry,"energy":energy,"location":location,"character_relations":character_relations,"daily_flags":daily_flags,"layan_hunger":layan_hunger,"layan_thirst":layan_thirst,"layan_tiredness":layan_tiredness,"layan_activity":layan_activity,"house_cleanliness":house_cleanliness,"meals_prepared":meals_prepared,"shower_count":shower_count,"schedule_note":schedule_note,"story_seen":story_seen,"weeks_done":weeks_done,"weeks_checked":weeks_checked,"goal_start_day":goal_start_day,"events_done":events_done,"story_ended":story_ended,"inventory":inventory,"quest_state":quest_state,"quest_day":quest_day,"quest_meta":quest_meta,"qflags":qflags,"skill_pts":skill_pts}
+ var data = {"day":day,"period":period,"money":money,"relationship":relationship,"mood":mood,"outfit":outfit,"owned_outfits":owned_outfits,"laundry":laundry,"energy":energy,"location":location,"character_relations":character_relations,"daily_flags":daily_flags,"layan_hunger":layan_hunger,"layan_thirst":layan_thirst,"layan_tiredness":layan_tiredness,"layan_activity":layan_activity,"house_cleanliness":house_cleanliness,"meals_prepared":meals_prepared,"shower_count":shower_count,"schedule_note":schedule_note,"story_seen":story_seen,"weeks_done":weeks_done,"weeks_checked":weeks_checked,"goal_start_day":goal_start_day,"events_done":events_done,"story_ended":story_ended,"inventory":inventory,"quest_state":quest_state,"quest_day":quest_day,"quest_meta":quest_meta,"qflags":qflags,"skill_pts":skill_pts,"talks_seen":talks_seen,"preg_stage":preg_stage,"preg_start":preg_start,"preg_flags":preg_flags,"craving":craving,"craving_bought":craving_bought,"nursery":nursery,"baby_name":baby_name,"baby_gender":baby_gender,"baby_born":baby_born,"pre_preg_outfit":pre_preg_outfit}
  var file = FileAccess.open("user://savegame.json", FileAccess.WRITE)
  if file:
   file.store_string(JSON.stringify(data))
@@ -2434,3 +2565,675 @@ func save_game():
 func _notification(what):
  if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_GO_BACK_REQUEST:
   save_game()
+
+# ================= نقاط التفاعل داخل الغرف =================
+func is_half_body(path: String) -> bool:
+ return "_half" in path.get_file()
+
+func click_mask_for(path: String, tex: Texture2D) -> BitMap:
+ if _mask_cache.has(path): return _mask_cache[path]
+ var bm: BitMap = null
+ var img: Image = tex.get_image() if tex != null else null
+ if img != null:
+  if img.is_compressed(): img.decompress()
+  if img.detect_alpha() != Image.ALPHA_NONE:
+   var small := img.duplicate()
+   small.resize(maxi(1, img.get_width() / 2), maxi(1, img.get_height() / 2), Image.INTERPOLATE_BILINEAR)
+   bm = BitMap.new()
+   bm.create_from_image_alpha(small, 0.25)
+ _mask_cache[path] = bm
+ return bm
+
+func room_active() -> bool:
+ if not is_instance_valid(cg_frame): return false
+ if is_instance_valid(overlay) and overlay.visible: return false
+ return explore_mode and sprite_focus.is_empty() and not cg_frame.visible and RoomsData.ROOMS.has(location)
+
+func pill_style(col: Color) -> StyleBoxFlat:
+ var st := mk_style(col, 16, Color(1, 1, 1, 0.35), 1)
+ st.content_margin_left = 10
+ st.content_margin_right = 10
+ st.content_margin_top = 3
+ st.content_margin_bottom = 3
+ return st
+
+func refresh_hotspots():
+ if not is_instance_valid(hotspot_layer): return
+ for c in hotspot_layer.get_children():
+  hotspot_layer.remove_child(c)
+  c.queue_free()
+ for c in exits_box.get_children():
+  exits_box.remove_child(c)
+  c.queue_free()
+ var on := room_active()
+ hotspot_layer.visible = on
+ exits_box.visible = on
+ menu_btn.visible = on
+ if is_instance_valid(steam_toggle): steam_toggle.visible = (location == "الحمام") and not on
+ if not on:
+  choice_scroll.visible = true
+  choice_scroll.anchor_top = 0.21
+  return
+ var rd: Dictionary = RoomsData.ROOMS[location]
+ var hs: Array = rd["hotspots"]
+ choice_scroll.visible = menu_open or hs.is_empty()
+ choice_scroll.anchor_top = 0.31
+ menu_btn.text = "إخفاء القائمة" if choice_scroll.visible else "كل الأنشطة"
+ for h in hs:
+  var rr: Array = h["rect"]
+  var b := Button.new()
+  b.name = "Hot_" + str(h["id"])
+  b.focus_mode = Control.FOCUS_NONE
+  b.anchor_left = rr[0]
+  b.anchor_top = rr[1]
+  b.anchor_right = rr[0] + rr[2]
+  b.anchor_bottom = rr[1] + rr[3]
+  b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+  b.add_theme_stylebox_override("normal", mk_style(Color(1, 1, 1, 0.0), 14))
+  b.add_theme_stylebox_override("hover", mk_style(Color(1, 0.95, 0.8, 0.12), 14, GOLD, 2))
+  b.add_theme_stylebox_override("pressed", mk_style(Color(1, 0.8, 0.4, 0.28), 14, GOLD, 3))
+  b.add_theme_stylebox_override("focus", mk_style(Color(1, 1, 1, 0.0), 14))
+  var hd: Dictionary = h
+  b.pressed.connect(func(): hotspot_pressed(hd))
+  hotspot_layer.add_child(b)
+  var lb := Label.new()
+  lb.text = str(h["label"])
+  lb.add_theme_font_size_override("font_size", 17)
+  lb.add_theme_color_override("font_color", Color("#fff6e8"))
+  lb.add_theme_stylebox_override("normal", pill_style(Color(0.18, 0.32, 0.55, 0.82) if h.has("to") else Color(0.08, 0.08, 0.13, 0.72)))
+  lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+  lb.anchor_left = 0.5
+  lb.anchor_right = 0.5
+  var lp: float = float(h.get("lp", 0.0))
+  lb.anchor_top = lp
+  lb.anchor_bottom = lp
+  lb.grow_horizontal = Control.GROW_DIRECTION_BOTH
+  lb.offset_top = 4
+  lb.offset_bottom = 34
+  b.add_child(lb)
+  if fx_level > 0:
+   var tw := lb.create_tween().set_loops()
+   tw.tween_property(lb, "modulate:a", 0.72, 1.6).set_trans(Tween.TRANS_SINE)
+   tw.tween_property(lb, "modulate:a", 1.0, 1.6).set_trans(Tween.TRANS_SINE)
+ for ex in rd["exits"]:
+  var eb := Button.new()
+  eb.text = "%s %s" % [str(RoomsData.EXIT_ICONS.get(ex, "")), ex]
+  eb.focus_mode = Control.FOCUS_NONE
+  eb.custom_minimum_size = Vector2(0, 48)
+  eb.add_theme_font_size_override("font_size", 17)
+  eb.add_theme_stylebox_override("normal", pill_style(Color(0.18, 0.32, 0.55, 0.86)))
+  eb.add_theme_stylebox_override("hover", pill_style(Color(0.25, 0.42, 0.7, 0.95)))
+  eb.add_theme_stylebox_override("pressed", pill_style(Color(0.82, 0.54, 0.35, 0.95)))
+  var dest: String = ex
+  eb.pressed.connect(func(): go(dest))
+  exits_box.add_child(eb)
+
+func room_intro():
+ if not room_active(): return
+ var rd: Dictionary = RoomsData.ROOMS[location]
+ if sprite_nodes.has("ليان"):
+  if is_instance_valid(note) and note.text.begins_with("ليان مو هنا"): note.text = ""
+  if not ("جائعة" in layan_activity or "تحتاج" in layan_activity):
+   layan_activity = "معك في " + location
+   update_status()
+  var g: Array = TalkData.GREET.get(period, TalkData.GREET[0])
+  speaker.text = "ليان"
+  dialogue.text = str(g[randi() % g.size()]) + "\n" + str(rd["desc"])
+ else:
+  speaker.text = location
+  dialogue.text = str(rd["desc"])
+
+func _set_sprite_x(v: float, b, sh):
+ if is_instance_valid(b):
+  b.anchor_left = v
+  b.anchor_right = v
+ if sh != null and is_instance_valid(sh):
+  sh.anchor_left = v
+  sh.anchor_right = v
+
+# ليان تمشي نحو الغرض (حركة أفقية ناعمة مع تمايل بسيط)، ثم ينفذ التفاعل
+func walk_layan(cx: float, cb: Callable):
+ var b: Control = sprite_nodes.get("ليان", null)
+ if b == null or fx_level == 0 or not is_instance_valid(b):
+  cb.call()
+  return
+ var sh = b.get_meta("shadow") if b.has_meta("shadow") else null
+ var from: float = b.anchor_left
+ var dist: float = absf(cx - from)
+ if dist < 0.04:
+  cb.call()
+  return
+ _walking = true
+ var dur: float = clampf(dist * 1.5, 0.3, 0.85)
+ var tw := b.create_tween()
+ tw.tween_method(_set_sprite_x.bind(b, sh), from, cx, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+ var steps := maxi(1, int(dur / 0.22))
+ var bob := b.create_tween()
+ for i in steps:
+  bob.tween_property(b, "rotation_degrees", 1.4 if i % 2 == 0 else -1.4, dur / steps * 0.5)
+  bob.tween_property(b, "rotation_degrees", 0.0, dur / steps * 0.5)
+ tw.finished.connect(func():
+  _walking = false
+  cb.call())
+
+func hotspot_pressed(h: Dictionary):
+ if _walking: return
+ if h.has("to"):
+  go(str(h["to"]))
+  return
+ var act: String = str(h["act"])
+ if bool(h.get("walk", false)) and sprite_nodes.has("ليان"):
+  var rr: Array = h["rect"]
+  walk_layan(clampf(float(rr[0]) + float(rr[2]) * 0.5, 0.16, 0.84), func(): hotspot_action(act))
+ else:
+  hotspot_action(act)
+
+# انتقال جلوس/وقوف: الصورة تنخفض وتتلاشى ثم تظهر الوضعية الجديدة
+func pose_transition(pose: String, after: Callable):
+ var b: Control = sprite_nodes.get("ليان", null)
+ if b == null or fx_level == 0 or not is_instance_valid(b):
+  show_pose(pose)
+  after.call()
+  return
+ _walking = true
+ var tw := b.create_tween().set_parallel(true)
+ tw.tween_property(b, "modulate:a", 0.0, 0.24)
+ tw.tween_property(b, "scale", Vector2(1.0, 0.94), 0.24)
+ tw.tween_property(b, "position:y", b.position.y + 26.0, 0.24)
+ tw.chain().tween_callback(func():
+  _walking = false
+  show_pose(pose)
+  after.call())
+
+func back_choice():
+ choice("رجوع", func(): go(location))
+
+func hotspot_action(act: String):
+ var here := sprite_nodes.has("ليان")
+ match act:
+  "tv":
+   say("التلفزيون", "وش تبي تشوف؟")
+   if here: choice("شاهدوا مع بعض (+3 علاقة)", tv_time)
+   choice("الأخبار لحالك (+4 طاقة)", func():
+    energy = mini(100, energy + 4)
+    note.text = "شفت الأخبار شوي."
+    advance())
+   back_choice()
+  "sofa":
+   say("الكنبة", "مكان الجلسة الهادية.")
+   if here:
+    choice("اجلسوا مع بعض (+3 علاقة)", func(): pose_transition("sofa_game", sofa_sit))
+    choice("خل ليان ترتاح", layan_sit)
+   choice("استرخِ شوي (+10 طاقة)", relax)
+   back_choice()
+  "book":
+   say("الطاولة", "كتب ومجلات.")
+   choice("اقرأ كتاب (+8 طاقة)", read_book)
+   if here:
+    choice("اقرأ لليان بصوت عالي (+3 علاقة)", func():
+     rel_once("readaloud", 3)
+     note.text = "قريت لليان فصل من روايتها المفضلة."
+     advance())
+   back_choice()
+  "plan": daily_schedule()
+  "fridge":
+   say("الثلاجة", "الثلاجة: موية وعصير وأغراض الطبخ.")
+   if here:
+    choice("ليان تشرب ماء", layan_drink)
+    choice("سناك سريع لليان", layan_eat)
+   choice("مشتريات البيت (-40 ريال)", groceries)
+   back_choice()
+  "stove":
+   say("الفرن", "وقت الطبخ.")
+   if here:
+    choice("ليان تطبخ وجبة (الخطوات كاملة)", layan_cook)
+    choice("اطبخوا الفطور سوا (+5 علاقة)", cook)
+   else:
+    choice("اطبخ أنت شي بسيط", dishes)
+   back_choice()
+  "island":
+   say("طاولة الأكل", "الأكل أحلى مع بعض.")
+   if here:
+    choice("كلوا مع بعض (+4 علاقة)", eat_together)
+    choice("ليان تاكل", layan_eat)
+   back_choice()
+  "sink":
+   say("المغسلة", "الصحون تنتظر.")
+   choice("اغسل الصحون", dishes)
+   back_choice()
+  "bed":
+   say("السرير", "السرير مرتب وريحته حلوة.")
+   if here:
+    choice("ليان تنام وترتاح", layan_sleep)
+    if period >= 2: choice("سوالف قبل النوم", talk)
+   choice("خذ قيلولة (يمر الوقت)", wait_period)
+   back_choice()
+  "closet": wardrobe()
+  "vanity":
+   say("التسريحة", "عطور ومكياج وأمشاط.")
+   choice("روتين العناية", skincare)
+   if here:
+    choice("سرّح شعر ليان (+3 علاقة)", func():
+     rel_once("hair", 3)
+     mood = "مبسوطة"
+     say("ليان", "ههه، يدك خفيفة! من وين تعلمت؟")
+     note.text = "سرحت شعر ليان وربطته لها."
+     back_choice()
+     update_status())
+   back_choice()
+  "window":
+   var views := ["الشمس طالعة والحي هادي، وصوت العصافير واضح.", "حر الظهر واضح، والشارع فاضي.", "السماء برتقالية، والجيران يتمشون.", "الليل هادي، والقمر واضح فوق البيوت."]
+   say("النافذة", views[period])
+   choice("انتظر شوي (يمر الوقت)", wait_period)
+   back_choice()
+  "shower":
+   say("الدش", "روتين الاستحمام بخصوصية؛ البخار يغطي المشهد.")
+   choice("روتين الاستحمام الكامل", func(): full_bath(0))
+   choice("دش سريع", bathing)
+   choice("كثافة البخار: " + steam_density_name(), func():
+    cycle_steam_density()
+    hotspot_action("shower"))
+   back_choice()
+  "tub": tub_bath()
+  "towel":
+   say("المناشف", "مناشف نظيفة ومطوية.")
+   choice("جهّز منشفة دافية لليان (+1 علاقة)", func():
+    rel_once("towel", 1)
+    note.text = "حطيت منشفة دافية جنب الدش."
+    go(location))
+   choice("اختيار ملابس بعد الاستحمام", wardrobe)
+   back_choice()
+  "bsink": bath_sink()
+  "bshelf":
+   say("رف العناية", "كريمات وماسكات وزيوت للشعر.")
+   choice("العناية بالبشرة (+5 مزاج)", skincare)
+   choice("ماسك للوجه مع ليان (+3 علاقة)", face_mask)
+   back_choice()
+  "washer":
+   say("الغسالة", "حمولات الملابس المتراكمة: %d" % laundry)
+   choice("شغّل الغسالة", do_laundry)
+   choice("اطلب من نورة (-25 ريال)", helper_laundry)
+   back_choice()
+  "lshelf":
+   house_cleanliness = mini(100, house_cleanliness + 5)
+   energy = maxi(0, energy - 3)
+   add_skill("التنظيم")
+   note.text = "رتبت رف المنظفات (+5% نظافة)."
+   go(location)
+  "lounger":
+   say("كرسي المساج", "جلسة استرخاء هادية.")
+   choice("مساج استرخاء لليان (-20 ريال)", func(): massage("ليان", 20))
+   choice("نورة تجهز الغرفة (-10 ريال)", massage_prep)
+   back_choice()
+  "rcouch": relax()
+  "outside":
+   say("الباب الأمامي", "وين تبي تروح؟")
+   choice("الحديقة", func(): go("الحديقة"))
+   choice("المقهى", func(): go("المقهى"))
+   choice("السوبرماركت", func(): go("السوبرماركت"))
+   choice("الشاطئ", func(): go("الشاطئ"))
+   choice("خريطة المدينة", func(): open_map("city"))
+   back_choice()
+  "mirror":
+   mood = "واثقة"
+   note.text = "تشيك على شكلك قبل لا تطلع. تمام!"
+   go(location)
+  "nora_desk":
+   if npc_present("نورة", location):
+    character_scene("نورة")
+   else:
+    say("مكتب نورة", "نورة مو في غرفتها الحين. مكتبها مرتب وعليه دفتر مواعيد البيت.")
+    choice("خطط مهام البيت", helper)
+    back_choice()
+  _:
+   go(location)
+ update_status()
+
+# زيادة العلاقة من نفس التفاعل مرة وحدة بكل فترة (حتى ما تنفجر العلاقة بالتكرار)
+func rel_once(key: String, amt: int) -> int:
+ var k := "rel_%s_%d_%d" % [key, day, period]
+ if daily_flags.has(k): return 0
+ daily_flags[k] = true
+ relationship = clampi(relationship + amt, 0, 100)
+ return amt
+
+func sofa_sit():
+ rel_once("sofa", 3)
+ layan_tiredness = maxi(0, layan_tiredness - 15)
+ layan_activity = "جالسة معك على الكنبة"
+ mood = "مرتاحة"
+ var lines := ["تعال قربي... كذا أحسن.", "أحب هالجلسة، لا تقوم بسرعة.", "حط راسك هنا وقل لي وش صار اليوم."]
+ say("ليان", lines[randi() % lines.size()])
+ note.text = "جلستوا على الكنبة مع بعض (+3 علاقة)."
+ choice("سولفوا", talk)
+ choice("شغلوا التلفزيون", tv_time)
+ choice("قوموا", func(): go(location))
+ update_status()
+
+func eat_together():
+ rel_once("eat", 4)
+ layan_hunger = maxi(0, layan_hunger - 30)
+ mood = "راضية"
+ note.text = "أكلتوا مع بعض على الطاولة (+4 علاقة)."
+ kitchen_texture("13_serve.png")
+ say("ليان", "الأكل يصير ألذ لما نجلس سوا.")
+ choice("متابعة", advance)
+ update_status()
+
+func bath_sink():
+ say("المغسلة والمرآة", "روتين سريع قدام المرآة.")
+ choice("تفريش الأسنان وغسل الوجه (+3 طاقة)", func():
+  energy = mini(100, energy + 3)
+  mood = "منتعشة"
+  note.text = "غسلت وجهك وفرشت أسنانك."
+  go(location))
+ choice("ليان تسرّح شعرها", func():
+  layan_activity = "تسرّح شعرها قدام المرآة"
+  show_pose("towel")
+  say("ليان", "دقيقة بس أخلص شعري.")
+  note.text = "ليان قدام المرآة تسرح شعرها."
+  choice("تمام", func(): go(location)))
+ back_choice()
+
+func face_mask():
+ rel_once("mask", 3)
+ mood = "مبسوطة"
+ say("ليان", "حط لك ماسك معي! ...ههه شكلك يضحك بالأخضر.")
+ note.text = "سويتوا ماسك مع بعض (+3 علاقة)."
+ choice("متابعة", func(): go(location))
+ update_status()
+
+# حمام البانيو: البخار كثيف ويغطي الشخصية بالكامل
+func tub_bath():
+ location = "الحمام"
+ steam_visible = true
+ var old_density := steam_density
+ steam_density = 2
+ show_pose("steam/s08")
+ steam_density = old_density
+ if is_instance_valid(bg_tex): bg_tex.modulate = Color(0.6, 0.6, 0.66)
+ layan_activity = "تسترخي في البانيو"
+ layan_tiredness = maxi(0, layan_tiredness - 25)
+ energy = mini(100, energy + 6)
+ mood = "مسترخية"
+ say("البانيو", "ماء دافي وفقاعات، والبخار مالي المكان. ليان تسترخي وتسكّر عيونها.")
+ note.text = "حمام دافي في البانيو (-25 تعب لليان)."
+ choice("أخذ المنشفة", finish_bathing)
+ choice("رجوع للحمام", func(): go("الحمام"))
+ update_status()
+
+# ================= السوالف =================
+func talk_ok(t: Dictionary) -> bool:
+ var ps: Array = t.get("p", [])
+ if not ps.is_empty() and not (period in ps): return false
+ if relationship < int(t.get("min", 0)): return false
+ if t.get("wk", false) and not is_weekend(): return false
+ if t.has("preg") and not (preg_stage in t["preg"]): return false
+ if t.get("baby", false) and preg_stage != 4: return false
+ return true
+
+func pick_talk() -> Dictionary:
+ var pool: Array = []
+ for t in TalkData.TALKS:
+  if talk_ok(t) and not talks_seen.has(t["id"]): pool.append(t)
+ if pool.is_empty():
+  for t in TalkData.TALKS:
+   if talk_ok(t):
+    talks_seen.erase(t["id"])
+    pool.append(t)
+ if pool.is_empty(): return {}
+ # الأولوية لسوالف الحمل والمولود إذا موجودة
+ var special: Array = pool.filter(func(x): return x.has("preg") or x.get("baby", false))
+ if not special.is_empty() and randi() % 2 == 0: pool = special
+ return pool[randi() % pool.size()]
+
+func talk_line(t: Dictionary, i: int):
+ var lines: Array = t["lines"]
+ var ln: Array = lines[i]
+ say(str(ln[0]), str(ln[1]))
+ if sprite_nodes.is_empty() or not sprite_nodes.has("ليان"):
+  sprite_focus = ["ليان"]
+  refresh_cards()
+ if i < lines.size() - 1:
+  choice("التالي", func(): talk_line(t, i + 1))
+ else:
+  for c in t["ch"]:
+   var cd: Dictionary = c
+   choice(str(cd["t"]), func(): talk_reply(t, cd))
+
+func talk_reply(t: Dictionary, c: Dictionary):
+ if not talks_seen.has(t["id"]): talks_seen.append(t["id"])
+ var key := "talk_%d_%d" % [day, period]
+ var n := int(daily_flags.get(key, 0))
+ daily_flags[key] = n + 1
+ var gain := int(c.get("rel", 0))
+ if n >= 2 and gain > 0: gain = 0
+ relationship = clampi(relationship + gain, 0, 100)
+ mood = "سعيدة" if gain >= 3 else ("زعلانة شوي" if gain < 0 else "هادئة")
+ say("ليان", str(c["r"]))
+ if gain > 0: note.text = "سالفة حلوة مع ليان (+%d علاقة)." % gain
+ elif gain < 0: note.text = "ليان زعلت شوي (%d علاقة). حاول تراضيها." % gain
+ else: note.text = "سولفتوا كثير هالوقت؛ السوالف الجاية بعد شوي تفرق أكثر."
+ choice("سولف معها بعد", talk)
+ choice("رجوع", func(): go(location))
+ update_status()
+
+# ================= قصة المولود =================
+func preg_day() -> int:
+ return day - preg_start
+
+func family_check() -> bool:
+ if preg_stage == 0:
+  if relationship >= FamilyData.START_REL and day >= FamilyData.START_DAY and period <= 2 and location != "الحمام" and layan_here(location):
+   preg_stage = 1
+   preg_start = day
+   pre_preg_outfit = outfit
+   relationship = mini(100, relationship + 6)
+   save_game()
+   story_lines("خبر سعيد", FamilyData.ANNOUNCE, 0, func():
+    say("ليان", "ما أصدق! بنصير أهل!")
+    choice("تحضنها وتفرح معها (+4 علاقة)", func():
+     relationship = mini(100, relationship + 4)
+     go("المنزل"))
+    choice("تسكت من الفرحة ثم تضحك", func(): go("المنزل")))
+   return true
+  return false
+ if preg_stage >= 1 and preg_stage <= 3:
+  var d := preg_day()
+  if d >= FamilyData.STAGE_DAYS * 3:
+   birth_scene()
+   return true
+  var target := 1 + d / FamilyData.STAGE_DAYS
+  if target > preg_stage:
+   preg_stage = target
+   var mat_ok := ResourceLoader.exists(str(outfit_textures.get(FamilyData.MATERNITY_OUTFIT, "")).replace("layan_outfits", "sprites/layan"))
+   if preg_stage == 3 and mat_ok and not owned_outfits.has(FamilyData.MATERNITY_OUTFIT):
+    owned_outfits.append(FamilyData.MATERNITY_OUTFIT)
+   if preg_stage == 3 and mat_ok: outfit = FamilyData.MATERNITY_OUTFIT
+   save_game()
+   var ms: Dictionary = FamilyData.MILESTONES[preg_stage]
+   story_lines(str(ms["title"]), ms["lines"], 0, func(): go("المنزل"))
+   return true
+  if preg_stage <= 2 and int(daily_flags.get("crave_day", 0)) != day:
+   daily_flags["crave_day"] = day
+   craving = FamilyData.CRAVINGS[randi() % FamilyData.CRAVINGS.size()]
+   craving_bought = ""
+   if is_instance_valid(note): note.text = "ليان تتوحم اليوم على: %s" % craving
+  return false
+ if preg_stage == 4 and period == 3:
+  var ck := "cry_%d" % day
+  if not daily_flags.has(ck):
+   daily_flags[ck] = true
+   if randi() % 2 == 0:
+    say("%s %s!" % [baby_name, gx("يبكي", "تبكي")], "صوت بكاء من غرفة النوم... ليان شكلها تعبانة.")
+    choice("قوم أنت و%s (-8 طاقة، +5 علاقة)" % gx("هدّيه", "هدّيها"), func():
+     energy = maxi(0, energy - 8)
+     relationship = mini(100, relationship + 5)
+     say("ليان", gx("الله يخليك لي... نام على صدرك.", "الله يخليك لي... نامت على صدرك."))
+     choice("متابعة", func(): go("المنزل")))
+    choice("خل ليان تقوم (-2 علاقة)", func():
+     relationship = maxi(0, relationship - 2)
+     say("ليان", "...طيب، أنا بقوم.")
+     choice("متابعة", func(): go("المنزل")))
+    update_status()
+    return true
+ return false
+
+func story_lines(title: String, lines: Array, i: int, done: Callable):
+ say(title, str(lines[i]))
+ note.text = title
+ if i < lines.size() - 1:
+  choice("التالي", func(): story_lines(title, lines, i + 1, done))
+ else:
+  choice("متابعة", done)
+ update_status()
+
+func preg_stage_name() -> String:
+ return ["", "بداية الحمل", "منتصف الحمل", "الشهور الأخيرة", "بعد الولادة"][preg_stage]
+
+func preg_menu():
+ var d := preg_day()
+ var info := "المرحلة: %s • اليوم %d من %d" % [preg_stage_name(), d + 1, FamilyData.STAGE_DAYS * 3]
+ if craving != "": info += "\nالوحم اليوم: %s%s" % [craving, " (اشتريته)" if craving_bought == craving else ""]
+ if preg_stage >= 2: info += "\nغرفة البيبي: %d من %d" % [nursery.size(), FamilyData.NURSERY.size()]
+ if baby_gender != "": info += "\nالجنس: %s" % ("ولد" if baby_gender == "boy" else "بنت")
+ sprite_focus = ["ليان"]
+ clear_cg()
+ refresh_cards()
+ say("ليان والحمل", info)
+ if not preg_flags.has("doc%d" % preg_stage):
+  choice("موعد الدكتورة (-%d ريال)" % FamilyData.DOCTOR_COST, doctor_visit)
+ if craving != "" and craving_bought == craving:
+  choice("اعطها %s (+5 علاقة)" % craving, func():
+   relationship = mini(100, relationship + 5)
+   say("ليان", "يااااه! كنت أحلم فيه من الصبح. أنت أحسن زوج!")
+   note.text = "ليان فرحت بالوحم."
+   craving = ""
+   craving_bought = ""
+   choice("رجوع", func(): go(location))
+   update_status())
+ elif craving != "":
+  choice("اسألها وش تشتهي", func():
+   say("ليان", "أبي %s... الحين!" % craving)
+   choice("أروح السوبرماركت", func(): go("السوبرماركت"))
+   choice("رجوع", func(): go(location)))
+ var mk := "rub_%d_%d" % [day, period]
+ if not daily_flags.has(mk):
+  choice("دلّك رجولها وريّحها (+3 علاقة)", func():
+   daily_flags[mk] = true
+   relationship = mini(100, relationship + 3)
+   layan_tiredness = maxi(0, layan_tiredness - 15)
+   say("ليان", "الله... ارتحت. التعب راح نصه.")
+   choice("رجوع", func(): go(location))
+   update_status())
+ choice("سولف معها", talk)
+ if preg_stage >= 2: choice("تجهيز غرفة البيبي", nursery_menu)
+ choice("رجوع", func(): go(location))
+ update_status()
+
+func doctor_visit():
+ if money < FamilyData.DOCTOR_COST:
+  note.text = "الرصيد ما يكفي لموعد الدكتورة."
+  return
+ money -= FamilyData.DOCTOR_COST
+ preg_flags.append("doc%d" % preg_stage)
+ relationship = mini(100, relationship + 4)
+ say("عيادة الدكتورة", str(FamilyData.DOCTOR[preg_stage]))
+ note.text = "موعد الدكتورة (+4 علاقة)."
+ if preg_stage == 2 and baby_gender == "":
+  choice("إيه، نبي نعرف", func():
+   baby_gender = "boy" if randi() % 2 == 0 else "girl"
+   say("الدكتورة", "مبروك... %s!" % ("ولد" if baby_gender == "boy" else "بنت"))
+   note.text = "عرفتوا جنس البيبي."
+   choice("متابعة", advance))
+  choice("خلوها مفاجأة", advance)
+ else:
+  choice("متابعة", advance)
+ update_status()
+
+func buy_craving():
+ if money < FamilyData.CRAVING_COST:
+  note.text = "الرصيد ما يكفي."
+  return
+ money -= FamilyData.CRAVING_COST
+ craving_bought = craving
+ note.text = "اشتريت %s لليان. وصّله لها من «ليان والحمل» بالبيت." % craving
+ go(location)
+
+func nursery_menu():
+ say("غرفة البيبي", "جهّز غرفة التخزين لتصير غرفة البيبي. (%d من %d)" % [nursery.size(), FamilyData.NURSERY.size()])
+ for it in FamilyData.NURSERY:
+  var nm: String = it[0]
+  var pr: int = it[1]
+  if nursery.has(nm): continue
+  choice("%s — %d ريال" % [nm, pr], func():
+   if money < pr:
+    note.text = "الرصيد ما يكفي."
+    return
+   money -= pr
+   nursery.append(nm)
+   relationship = mini(100, relationship + 2)
+   house_cleanliness = mini(100, house_cleanliness + 2)
+   note.text = "اشتريت %s لغرفة البيبي (+2 علاقة)." % nm
+   update_status()
+   nursery_menu())
+ if nursery.size() >= FamilyData.NURSERY.size():
+  note.text = "غرفة البيبي جاهزة بالكامل! ليان مرة فرحانة."
+ choice("رجوع", func(): go(location))
+ update_status()
+
+func birth_scene():
+ if ResourceLoader.exists("res://assets/backgrounds/hospital.jpg"):
+  clear_cg()
+  bg_tex.texture = load("res://assets/backgrounds/hospital.jpg")
+ story_lines("المولود", FamilyData.BIRTH, 0, func():
+  if baby_gender == "": baby_gender = "boy" if randi() % 2 == 0 else "girl"
+  var names: Array = FamilyData.BOY_NAMES if baby_gender == "boy" else FamilyData.GIRL_NAMES
+  say("ليان", "%s... وش نسميه؟" % ("ولدنا" if baby_gender == "boy" else "بنتنا"))
+  for nm in names:
+   var n2: String = nm
+   choice(n2, func(): name_baby(n2)))
+
+func name_baby(nm: String):
+ baby_name = nm
+ preg_stage = 4
+ baby_born = day
+ relationship = mini(100, relationship + 10)
+ if pre_preg_outfit != "" and owned_outfits.has(pre_preg_outfit): outfit = pre_preg_outfit
+ craving = ""
+ craving_bought = ""
+ var extra := ""
+ if nursery.has("حقيبة المستشفى"): extra = "\nالحمد لله إن حقيبة المستشفى كانت جاهزة."
+ if nursery.size() >= FamilyData.NURSERY.size(): extra += "\nرجعتوا البيت وغرفة البيبي جاهزة ومرتبة."
+ save_game()
+ say("%s" % nm, "أهلًا بـ%s في بيتكم! ليان %s وقالت: «الحين البيت صار كامل.»%s" % [nm, gx("ضمّته", "ضمّتها"), extra])
+ note.text = "صار عندكم مولود: %s (+10 علاقة)." % nm
+ choice("متابعة", func(): go("المنزل"))
+ update_status()
+
+func gx(boy: String, girl: String) -> String:
+ return girl if baby_gender == "girl" else boy
+
+func baby_menu():
+ var age := day - baby_born
+ sprite_focus = ["ليان"]
+ clear_cg()
+ refresh_cards()
+ say("%s" % baby_name, "عمر %s: %d يوم. وش تسوي %s الحين؟" % [baby_name, age, gx("معه", "معها")])
+ for c in FamilyData.BABY_CARE:
+  var cc: Array = c
+  var label := gx(str(cc[0]), str(cc[4]))
+  var key := "baby_%s_%d_%d" % [str(cc[0]), day, period]
+  if daily_flags.has(key): continue
+  choice("%s (+%d علاقة)" % [label, int(cc[2])], func():
+   daily_flags[key] = true
+   energy = clampi(energy + int(cc[1]), 0, 100)
+   relationship = mini(100, relationship + int(cc[2]))
+   say("ليان", gx(str(cc[3]), str(cc[5])))
+   note.text = "%s (%s)." % [label, baby_name]
+   choice("متابعة", baby_menu)
+   choice("رجوع", func(): go(location))
+   update_status())
+ choice("سولف مع ليان", talk)
+ choice("رجوع", func(): go(location))
+ update_status()
