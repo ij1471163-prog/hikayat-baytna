@@ -20,6 +20,7 @@ jobs:
 
       - name: Setup Android signing and editor settings
         run: |
+          rm -f /root/debug.keystore
           keytool -genkeypair -v -keystore /root/debug.keystore -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
