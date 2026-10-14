@@ -20,6 +20,13 @@ jobs:
 
       - name: Setup Android signing and editor settings
         run: |
+          # godot-ci keeps export templates under /root, but GitHub sets HOME=/github/home
+          echo "HOME=$HOME"
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          if [ ! -d "$HOME/.local/share/godot/export_templates/4.4.1.stable" ]; then
+            cp -r /root/.local/share/godot/export_templates/4.4.1.stable "$HOME/.local/share/godot/export_templates/"
+          fi
+          ls "$HOME/.local/share/godot/export_templates/4.4.1.stable" | grep android
           rm -f /root/debug.keystore
           keytool -genkeypair -v -keystore /root/debug.keystore -alias androiddebugkey \
             -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android \
