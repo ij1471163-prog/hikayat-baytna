@@ -24,7 +24,7 @@ def get(kind):
     if kind not in pipes:
         cls = StableDiffusionInpaintPipeline if kind == "inpaint" else StableDiffusionPipeline
         p = cls.from_pretrained(MODELS[kind], torch_dtype=torch.float32, safety_checker=None, requires_safety_checker=False)
-        p.scheduler = DPMSolverMultistepScheduler.from_config(p.scheduler.config, use_karras_sigmas=True)
+        p.scheduler = DPMSolverMultistepScheduler.from_config(p.scheduler.config, algorithm_type="dpmsolver++", solver_type="midpoint", use_karras_sigmas=True, final_sigmas_type="sigma_min")
         p.set_progress_bar_config(disable=True)
         pipes[kind] = p
     return pipes[kind]
