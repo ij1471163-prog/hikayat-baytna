@@ -30,9 +30,16 @@ def get(kind):
     return pipes[kind]
 
 
+import traceback
+def fail(e):
+    open("err.txt", "w").write(traceback.format_exc()[-2500:])
+    print("FAILED", e, flush=True)
+    sys.exit(1)
+
 steps = int(cfg.get("steps", 28))
 gs = float(cfg.get("guidance", 6.5))
-for j in mine:
+def run_all():
+  for j in mine:
     style = cfg["style"][j.get("style", "char")]
     prompt = j["prompt"] + ", " + style
     for seed in j.get("seeds", [11, 22]):
@@ -52,4 +59,8 @@ for j in mine:
                                  num_inference_steps=steps, guidance_scale=gs, generator=g).images[0]
         out.save(f"art_out/{j['name']}_s{seed}.png")
         print(f"{j['name']} seed {seed}: {time.time() - t0:.0f}s", flush=True)
+try:
+    run_all()
+except Exception as e:
+    fail(e)
 print("SHARD_DONE", flush=True)

@@ -41,7 +41,7 @@ jobs:
           rc=$?
           grep -E "seed|shard|SHARD_DONE" gen.log | while IFS= read -r l; do echo "::notice title=gen::$l"; done
           if [ $rc -ne 0 ]; then
-            tail -c 3000 gen.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' > ann.txt
+            ( [ -f err.txt ] && cat err.txt || tail -c 2500 gen.log ) | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' > ann.txt
             echo "::error title=gen-log::$(cat ann.txt)"
           fi
           exit $rc
