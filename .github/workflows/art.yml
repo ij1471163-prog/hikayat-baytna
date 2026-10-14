@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -37,7 +37,7 @@ jobs:
       - name: Draw
         run: |
           set +e
-          python art/gen.py ${{ matrix.shard }} 8 "${{ github.event.inputs.only }}" > gen.log 2>&1
+          python art/gen.py ${{ matrix.shard }} 14 "${{ github.event.inputs.only }}" > gen.log 2>&1
           rc=$?
           grep -E "seed|shard|SHARD_DONE" gen.log | while IFS= read -r l; do echo "::notice title=gen::$l"; done
           if [ $rc -ne 0 ]; then

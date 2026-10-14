@@ -3,7 +3,7 @@
  "guidance": 6.5,
  "style": {
   "char": "3d cartoon character render, disney pixar style, soft studio lighting, clean shading, high quality, detailed",
-  "bg": "interior design photo, realistic 3d render, cozy warm lighting, highly detailed, wide angle, no people, empty room"
+  "bg": "interior design photo, realistic 3d render, cozy warm evening lighting, warm table lamps, golden tones, highly detailed, wide angle, no people, empty room"
  },
  "negative": "nsfw, nude, naked, cleavage, underwear, lingerie, lowres, bad anatomy, bad hands, extra fingers, missing fingers, extra limbs, extra arms, deformed, disfigured, blurry, watermark, text, logo, signature, cropped, out of frame, cut off feet, multiple people, two heads",
  "jobs": [
