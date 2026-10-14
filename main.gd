@@ -49,6 +49,7 @@ const WorldData = preload("res://world_data.gd")
 const RoomsData = preload("res://rooms_data.gd")
 const TalkData = preload("res://talk_data.gd")
 const FamilyData = preload("res://family_data.gd")
+const ScenesData = preload("res://scenes_data.gd")
 # نقاط التفاعل داخل الغرف
 var hotspot_layer: Control
 var exits_box: HFlowContainer
@@ -735,6 +736,10 @@ func go(place):
   explore_mode = false
   refresh_cards()
   return
+ if not RoomsData.ROOMS.has(place):
+  var gsc := available_group_scene(place)
+  if not gsc.is_empty():
+   choice("سالفة: " + str(gsc["title"]), func(): play_group_scene(gsc, 0))
  if place in ["المنزل", "المطبخ", "الصالة", "غرفة النوم", "غرفة ليان"] and not layan_here(place) and is_instance_valid(note):
   note.text = "ليان مو هنا الحين؛ هي في %s." % str(npc_sched("ليان")[period])
  explore_mode = true
@@ -1225,7 +1230,7 @@ func skincare():
  choice("العودة", func(): go("الحمام"))
  update_status()
 
-const MASSAGE_STEPS := ["تبدأ نورة بتدليك الكتفين بلطف.", "تضيف الزيت العطري على الظهر.", "حركات دائرية هادئة على الكتفين.", "تدليك طويل لعمود الظهر.", "تمدد الذراع وترخي العضلات.", "تدليك الرقبة وفروة الرأس.", "أحجار دافئة على الظهر.", "تدليك الساقين.", "تدليك القدمين.", "تدليك الرأس والاسترخاء.", "منشفة دافئة على الظهر.", "تنتهي الجلسة وتحس ليان براحة تامة."]
+const MASSAGE_STEPS := ["تبدأ نورة بتدليك الكتفين بلطف.", "تضيف الزيت العطري على الظهر.", "حركات دائرية هادئة على الكتفين.", "تدليك طويل لعمود الظهر.", "تنزل لأسفل الظهر بحركات أعمق وترخي العضلات.", "تدليك الرقبة وفروة الرأس.", "أحجار دافئة على الظهر.", "تدليك الساقين.", "تدليك القدمين.", "تدليك الرأس والاسترخاء.", "منشفة دافئة على الظهر.", "تنتهي الجلسة وتحس ليان براحة تامة."]
 
 func massage(person: String, cost: int):
  if money < cost:
@@ -1395,7 +1400,7 @@ func character_scene(name: String):
  var relation: int = int(character_relations.get(name, 40))
  match name:
   "نورة":
-   say("نورة", "أنا ونورة وليان صديقات مقربات. تقدر تتحدث معها أو تتعاونون في شؤون البيت.")
+   say("نورة", "نورة تشتغل عندكم من سنين، وصارت أقرب صديقة لليان. تقدر تسولف معها أو تتعاونون في شؤون البيت.")
    choice("حديث ودي مع نورة (+3 علاقة)", func(): character_action(name, 3, "سولفت مع نورة وتكلمت عن يومها."))
    choice("خطط مع نورة وليان لنشاط منزلي (+4 علاقة)", func(): character_action(name, 4, "خططتم لنشاط منزلي جماعي."))
    choice("اطلب خدمة منزلية", helper)
@@ -2716,6 +2721,29 @@ func refresh_hotspots():
    var tw := lb.create_tween().set_loops()
    tw.tween_property(lb, "modulate:a", 0.72, 1.6).set_trans(Tween.TRANS_SINE)
    tw.tween_property(lb, "modulate:a", 1.0, 1.6).set_trans(Tween.TRANS_SINE)
+ var gsc := available_group_scene(location)
+ if not gsc.is_empty():
+  var sb := Button.new()
+  sb.name = "GroupScene"
+  sb.text = "سالفة: " + str(gsc["title"])
+  sb.focus_mode = Control.FOCUS_NONE
+  sb.anchor_left = 0.5
+  sb.anchor_right = 0.5
+  sb.anchor_top = 0.215
+  sb.grow_horizontal = Control.GROW_DIRECTION_BOTH
+  sb.custom_minimum_size = Vector2(0, 52)
+  sb.add_theme_font_size_override("font_size", 20)
+  sb.add_theme_color_override("font_color", Color("#1b1b1b"))
+  sb.add_theme_stylebox_override("normal", pill_style(Color("#ffd34d")))
+  sb.add_theme_stylebox_override("hover", pill_style(Color("#ffe17a")))
+  sb.add_theme_stylebox_override("pressed", pill_style(Color("#d08a5a")))
+  var gd: Dictionary = gsc
+  sb.pressed.connect(func(): play_group_scene(gd, 0))
+  hotspot_layer.add_child(sb)
+  if fx_level > 0:
+   var tw := sb.create_tween().set_loops()
+   tw.tween_property(sb, "modulate", Color(1.12, 1.1, 1.0), 0.8).set_trans(Tween.TRANS_SINE)
+   tw.tween_property(sb, "modulate", Color.WHITE, 0.8).set_trans(Tween.TRANS_SINE)
  for ex in rd["exits"]:
   var eb := Button.new()
   eb.text = "%s %s" % [str(RoomsData.EXIT_ICONS.get(ex, "")), ex]
@@ -3599,3 +3627,82 @@ func live_shower_end():
  bath_mode = ""
  sprites_layer.visible = true
  finish_bathing()
+
+
+# ================= مشاهد الحوار الجماعية =================
+const SPEAKER_NPC := {"ليان": "ليان", "نورة": "نورة", "سارة": "سارة", "هند": "هند", "ميسون": "ميسون", "سلمى": "الشبح"}
+
+func group_scene_ok(sc: Dictionary, place: String) -> bool:
+ if story_seen.has(sc["id"]): return false
+ var where: Array = sc.get("where", [])
+ if where.is_empty():
+  if not (place in WorldData.HOUSE_PLACES): return false
+ elif not (place in where):
+  return false
+ var ps: Array = sc.get("p", [])
+ if not ps.is_empty() and not (period in ps): return false
+ if day < int(sc.get("day", 1)): return false
+ var rel: Dictionary = sc.get("rel", {})
+ for n in rel:
+  var cur: int = relationship if n == "ليان" else int(character_relations.get(n, 0))
+  if cur < int(rel[n]): return false
+ for n in sc.get("who", []):
+  if n == "ليان":
+   if not layan_here(place): return false
+  elif not npc_present(str(n), place):
+   return false
+ for f in sc.get("need", []):
+  if not (story_seen.has(f) or has_flag(str(f))): return false
+ if sc.has("preg") and not (preg_stage in sc["preg"]): return false
+ if sc.get("baby", false) and preg_stage != 4: return false
+ return true
+
+func available_group_scene(place: String) -> Dictionary:
+ if int(daily_flags.get("gs_day", 0)) == day: return {}
+ for sc in ScenesData.SCENES:
+  if group_scene_ok(sc, place): return sc
+ return {}
+
+func play_group_scene(sc: Dictionary, i: int):
+ var lines: Array = sc["lines"]
+ if i == 0:
+  var cast: Array = []
+  for n in sc.get("who", []) + sc.get("visit", []):
+   var npc: String = str(SPEAKER_NPC.get(n, n))
+   if WorldData.NPCS.has(npc) and not cast.has(npc) and cast.size() < 3: cast.append(npc)
+  explore_mode = false
+  clear_cg()
+  sprite_focus = cast
+  refresh_cards()
+ var ln: Array = lines[i]
+ say(str(ln[0]), str(ln[1]))
+ note.text = "سالفة: %s (%d/%d)" % [str(sc["title"]), i + 1, lines.size()]
+ _highlight_speaker(str(ln[0]))
+ if i < lines.size() - 1:
+  choice("التالي", func(): play_group_scene(sc, i + 1))
+ else:
+  for c in sc["ch"]:
+   var cd: Dictionary = c
+   choice(str(cd["t"]), func(): group_scene_choice(sc, cd))
+ update_status()
+
+func group_scene_choice(sc: Dictionary, c: Dictionary):
+ if not story_seen.has(sc["id"]): story_seen.append(sc["id"])
+ daily_flags["gs_day"] = day
+ apply_fx(c.get("fx", {}))
+ var rr: Array = c.get("r", ["ليان", "..."])
+ say(str(rr[0]), str(rr[1]))
+ _highlight_speaker(str(rr[0]))
+ note.text = "انتهت السالفة: " + str(sc["title"])
+ save_game()
+ choice("متابعة", func(): go(location))
+ update_status()
+
+# المتكلم يبان أوضح، والباقين يخفّون شوي
+func _highlight_speaker(who: String):
+ var npc: String = str(SPEAKER_NPC.get(who, ""))
+ for n in sprite_nodes:
+  var b: Control = sprite_nodes[n]
+  if not is_instance_valid(b): continue
+  var on: bool = (npc == "") or (n == npc)
+  b.modulate = Color(1, 1, 1, 1) if on else Color(0.72, 0.72, 0.78, 1)
