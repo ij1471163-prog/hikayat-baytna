@@ -47,7 +47,7 @@ jobs:
           set +e
           godot --headless --path . --export-debug Android build/HikayatBaytna.apk > export.log 2>&1
           rc=$?
-          grep -iE "error|fail|cannot|not found|invalid|missing" export.log | head -15 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+          tail -25 export.log | grep -v "^\s*$" | while IFS= read -r l; do echo "::error::${l:0:400}"; done
           ls -la build || true
           exit $rc
 
