@@ -1,0 +1,76 @@
+name: Incoming Images
+# يجهز الصور المرفوعة في incoming/ ويفتح طلب دمج للمراجعة (ما يستبدل شي في main مباشرة)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "incoming/**"
+      - "!incoming/REPORT-AR.md"
+      - "!incoming/README-AR.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: incoming-images
+  cancel-in-progress: false
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: images/review-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache background-removal model
+        uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-isnet-general-use-v1
+      - name: Install
+        run: pip install --quiet pillow numpy "rembg[cpu]"
+
+      - name: Process incoming images
+        run: |
+          python tools/images/process_incoming.py --backup-dir "image_backups/run-${{ github.run_id }}" > process.log 2>&1 || { tail -40 process.log; exit 1; }
+          cat incoming/REPORT-AR.md >> "$GITHUB_STEP_SUMMARY"
+          DONE=$(python -c "import json;print(len(json.load(open('incoming/.last_run.json'))['done']))")
+          echo "DONE=$DONE" >> "$GITHUB_ENV"
+          echo "::notice title=images::processed=$DONE"
+
+      - name: Validate images and paths
+        run: python tools/images/check_assets.py
+
+      - name: Push review branch
+        if: env.DONE != '0'
+        run: |
+          [ -d "image_backups" ] && touch image_backups/.gdignore
+          git config user.name "images-bot"
+          git config user.email "images-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A assets incoming image_backups
+          git commit -q -m "Images from incoming/ (run ${{ github.run_id }})"
+          git push -q origin "$BRANCH"
+          echo "::notice title=review-branch::$BRANCH"
+
+      - name: Open pull request for review
+        if: env.DONE != '0'
+        run: |
+          if gh pr create --base main --head "$BRANCH" --title "صور جديدة للمراجعة (${{ github.run_id }})" --body-file incoming/REPORT-AR.md; then
+            echo "تم فتح طلب دمج للمراجعة." >> "$GITHUB_STEP_SUMMARY"
+          else
+            URL="${{ github.server_url }}/${{ github.repository }}/compare/main...$BRANCH"
+            echo "::warning title=pr::ما قدرت أفتح طلب الدمج تلقائيًا (غالبًا إعداد Allow GitHub Actions to create pull requests مقفل). افتحه من: $URL"
+            echo "افتح طلب الدمج من هنا: $URL" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Build test APK from the review branch
+        if: env.DONE != '0'
+        run: gh workflow run build-android.yml --ref "$BRANCH" && echo "::notice title=apk::بدأ بناء APK تجريبي من $BRANCH"
