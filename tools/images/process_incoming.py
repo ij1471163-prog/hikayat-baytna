@@ -45,6 +45,16 @@ def build_map():
         d = A / "sprites" / sub
         for p in sorted(d.glob("*.png")):
             targets[p.relative_to(ROOT).as_posix()] = "char"
+    # مشاهد عريضة (CG): الطبخ والحمام والمشاهد في assets/wide، والمساج، والشبح
+    scene_alias = {}
+    for p in sorted((A / "wide").glob("*.jpg")):
+        targets[p.relative_to(ROOT).as_posix()] = "bg"
+    for p in sorted((A / "massage").glob("*.jpg")):
+        rel = p.relative_to(ROOT).as_posix(); targets[rel] = "bg"; scene_alias["massage_" + p.stem] = rel
+    for p in sorted((A / "ghost").glob("*.jpg")):
+        rel = p.relative_to(ROOT).as_posix(); targets[rel] = "bg"; scene_alias["ghost_" + p.stem] = rel
+    for p in sorted((A / "scenes").glob("*.jpg")):
+        rel = p.relative_to(ROOT).as_posix(); targets[rel] = "bg"; scene_alias["scene_" + p.stem] = rel
     # صور تنتظرها اللعبة ولسا مو موجودة (من IMAGES-NEEDED-AR.txt)
     needed = ROOT / "IMAGES-NEEDED-AR.txt"
     if needed.exists():
@@ -60,11 +70,15 @@ def build_map():
     for path, kind in targets.items():
         stem = Path(path).stem
         folder = Path(path).parent.name
+        if folder in ("massage", "ghost", "scenes"): continue   # أسماؤها في scene_alias
         add(stem, path)
         add(re.sub(r"^\d+_", "", stem), path)                     # بدون الرقم: pink_hearts_pajamas
-        prefix = {"backgrounds": "bg", "layan": "layan", "poses": "pose", "nora_poses": "nora_pose", "sprites": "char"}[folder]
+        prefix = {"backgrounds": "bg", "layan": "layan", "poses": "pose", "nora_poses": "nora_pose", "sprites": "char"}.get(folder)
+        if prefix is None: continue   # المشاهد لها أسماء خاصة (scene_alias)
         add(f"{prefix}_{stem}", path)                               # bg_laundry / pose_laundry ...
         add(f"{prefix}_{re.sub(r'^[0-9]+_', '', stem)}", path)
+    for al, rel in scene_alias.items():
+        aliases[norm(al)] = [rel]
     # أسماء عربية من كود اللعبة (قراءة فقط)
     main = (ROOT / "main.gd").read_text(encoding="utf-8")
     bgm = re.search(r"const BG_FILES := \{(.*?)\}", main)
@@ -183,7 +197,8 @@ def main():
                 check_image(dst if dst.exists() else dst.with_suffix(".png"))   # تحقق إن الناتج سليم
                 src.unlink()
             used[dst_rel] = rel
-            done.append((rel, dst_rel, "خلفية" if kind == "bg" else "شخصية", notes))
+            label = "شخصية" if kind != "bg" else ("خلفية" if "/backgrounds/" in dst_rel else "مشهد")
+            done.append((rel, dst_rel, label, notes))
         except Exception as e:
             left.append((rel, f"تعذّرت المعالجة: {e}"))
     # التقرير
