@@ -44,7 +44,12 @@ jobs:
       - name: Export debug APK
         run: |
           mkdir -p build
-          godot --headless --path . --export-debug Android build/HikayatBaytna.apk
+          set +e
+          godot --headless --path . --export-debug Android build/HikayatBaytna.apk > export.log 2>&1
+          rc=$?
+          grep -iE "error|fail|cannot|not found|invalid|missing" export.log | head -15 | while IFS= read -r l; do echo "::error::${l:0:400}"; done
+          ls -la build || true
+          exit $rc
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
