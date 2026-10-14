@@ -54,7 +54,7 @@ jobs:
           set +e
           godot --headless --path . --export-debug Android build/HikayatBaytna.apk > export.log 2>&1
           rc=$?
-          grep -v -e "^\s*$" -e first_scan -e "Godot Engine" -e "build tools" -e loading_editor -e "at: " -e daemon export.log | tail -9 | while IFS= read -r l; do echo "::error::$(printf %s "$l" | cut -c1-400)"; done
+          { ls "$HOME/.local/share/godot/export_templates/4.4.1.stable" | tr '\n' ' '; echo; grep -A6 "configuration errors" export.log; } | grep -v "^\s*$" | head -9 | while IFS= read -r l; do echo "::error::$(printf %s "$l" | cut -c1-400)"; done
           ls -la build || true
           exit $rc
 
