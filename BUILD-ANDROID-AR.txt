@@ -1,0 +1,11 @@
+بناء حكاية بيتنا على أندرويد (APK)
+
+1) أنشئ مستودع GitHub جديد (Private) وارفع محتويات هذا المجلد (وليس المجلد نفسه) إلى الجذر.
+   يجب أن يظهر .github/workflows/build-android.yml في جذر المستودع.
+2) افتح تبويب Actions > Build Android APK > Run workflow.
+3) بعد النجاح نزّل artifact باسم HikayatBaytna-Android-APK، فك الضغط، وثبّت الـ APK على الجوال.
+4) لو فشل البناء: افتح سجل خطوة Export debug APK وأرسل لي السطور الأخيرة.
+
+محليًا: ثبّت Godot 4.4.1 + Export Templates + JDK 17 + Android SDK، ثم Project > Export > Android.
+ملاحظة: نسخة debug للتجربة فقط. قبل Google Play يلزم توقيع release.
+تم فحص السكربتات وتشغيل المشهد في Godot 4.4.1 بدون أخطاء؛ لم يُبنَ APK فعلي بعد.

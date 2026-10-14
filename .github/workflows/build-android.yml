@@ -1,0 +1,53 @@
+name: Build Android APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    container:
+      image: barichello/godot-ci:4.4.1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate project files
+        run: |
+          test -f project.godot && test -f main.tscn && test -f main.gd && test -f free_roam.gd
+          test "$(find assets/layan_outfits -maxdepth 1 -name '[0-9][0-9]_*.png' | wc -l)" -ge 12
+
+      - name: Setup Android signing and editor settings
+        run: |
+          keytool -genkeypair -v -keystore /root/debug.keystore -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 -validity 10000 -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/lib/android-sdk}}"
+          JAVA="$(dirname "$(dirname "$(readlink -f "$(which javac)")")")"
+          echo "SDK=$SDK JAVA=$JAVA"
+          mkdir -p ~/.config/godot
+          {
+            echo '[gd_resource type="EditorSettings" format=3]'
+            echo '[resource]'
+            echo "export/android/android_sdk_path = \"$SDK\""
+            echo "export/android/java_sdk_path = \"$JAVA\""
+            echo 'export/android/debug_keystore = "/root/debug.keystore"'
+            echo 'export/android/debug_keystore_user = "androiddebugkey"'
+            echo 'export/android/debug_keystore_pass = "android"'
+          } > ~/.config/godot/editor_settings-4.4.tres
+
+      - name: Import Godot resources
+        run: godot --headless --path . --import
+
+      - name: Export debug APK
+        run: |
+          mkdir -p build
+          godot --headless --path . --export-debug Android build/HikayatBaytna.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HikayatBaytna-Android-APK
+          path: build/HikayatBaytna.apk
+          if-no-files-found: error

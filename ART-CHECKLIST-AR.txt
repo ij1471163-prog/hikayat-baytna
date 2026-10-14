@@ -1,0 +1,12 @@
+قائمة الفن المطلوب لتصير اللعبة مثل Summertime Saga (كل ملف يستبدل الحالي بنفس الاسم):
+
+1) خلفيات بدون أشخاص، 1920x1080، في assets/backgrounds/  (png أو jpg)
+   kitchen, bathroom, bedroom, layan_room, nora_room, living_room, relax_room,
+   laundry, clothes_shop, garden, work, cafe, beach, gym, supermarket, entrance, city
+   (الموجود الحين مموّه ومؤقت، مقصوص من لوحات المفاهيم)
+
+2) شخصيات PNG شفافة الخلفية، جسم كامل، ارتفاع 1600px+:
+   assets/sprites/layan/01..12_*.png  (نفس أسماء الملابس)
+   assets/sprites/{nora,sara,hind,maysoon}.png  (حاليًا نصف جسم بدقة منخفضة)
+
+3) أيقونات الواجهة في assets/ui/*.png (مرسومة مؤقتًا، تقدر تستبدلها)

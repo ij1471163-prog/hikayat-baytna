@@ -1,0 +1,7 @@
+فحص الأصول
+
+- 12 ملف صورة منفصل لملابس ليان في assets/layan_outfits/.
+- main.gd يحتوي على مسارات res://assets/layan_outfits/ للأزياء الاثني عشر.
+- صورتا المستخدم الأصليتان محفوظتان داخل assets/concept_reference/ بأسماء user_selected_*_latest.png.
+- الصور المجمعة داخل concept_reference مراجع تصميم وليست مشاهد قابلة للعب بحد ذاتها.
+- لم يتم تأكيد تصدير APK أو تشغيل المشروع داخل Godot في هذه البيئة؛ يلزم تشغيل GitHub Actions ومراجعة سجل البناء.
