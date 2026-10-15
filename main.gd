@@ -535,8 +535,12 @@ func build_overlay():
  close.pressed.connect(close_overlay)
  pv.add_child(close)
 
-func _process(_delta):
- pass
+var _init_acc := 0.0
+func _process(delta):
+ _init_acc += delta
+ if _init_acc > 2.0:
+  _init_acc = 0.0
+  _initiative_tick()
 
 func toggle_steam():
  steam_visible = not steam_visible
@@ -966,6 +970,36 @@ var _pose_seed := 0
 var _idle_meta := {}
 var current_cg_path := ""
 var _shadow_tex: Texture2D = null
+# متوسط لون وإضاءة الخلفية حول مكان الشخصية (نسخة مصغرة من الخلفية محفوظة)
+var _bg_small := {}
+func bg_light(cx: float, cy: float, rw: float, rh: float) -> Color:
+ if not is_instance_valid(bg_tex) or bg_tex.texture == null: return Color.WHITE
+ var key: String = bg_tex.texture.resource_path
+ if not _bg_small.has(key):
+  var img: Image = bg_tex.texture.get_image()
+  if img == null: return Color.WHITE
+  img = img.duplicate()
+  if img.is_compressed(): img.decompress()
+  img.resize(32, 18, Image.INTERPOLATE_BILINEAR)
+  _bg_small[key] = img
+ var im: Image = _bg_small[key]
+ var x0 := clampi(int((cx - rw * 0.5) * 32.0), 0, 31)
+ var x1 := clampi(int((cx + rw * 0.5) * 32.0), x0, 31)
+ var y0 := clampi(int((cy - rh * 0.5) * 18.0), 0, 17)
+ var y1 := clampi(int((cy + rh * 0.5) * 18.0), y0, 17)
+ var acc := Color(0, 0, 0)
+ var n := 0
+ for yy in range(y0, y1 + 1):
+  for xx in range(x0, x1 + 1):
+   var c := im.get_pixel(xx, yy)
+   acc += Color(c.r, c.g, c.b); n += 1
+ acc = acc / float(maxi(n, 1))
+ var lum := 0.299 * acc.r + 0.587 * acc.g + 0.114 * acc.b
+ var k := clampf(0.62 + lum * 0.7, 0.72, 1.06)
+ var hue := Color(acc.r, acc.g, acc.b) / maxf(lum, 0.05)
+ var t := Color(1, 1, 1).lerp(hue, 0.16)
+ return Color(t.r * k, t.g * k, t.b * k)
+
 func shadow_texture() -> Texture2D:
  if _shadow_tex == null:
   var g := Gradient.new()
@@ -1778,6 +1812,7 @@ func idle_pose(npc: String) -> Dictionary:
  var lst: Array = PoseData.LAYAN if npc == "ليان" else (PoseData.NORA if npc == "نورة" else [])
  var cands: Array = []
  for p in lst:
+  if sprite_focus.is_empty() and str(p["post"]) == "standcut": continue
   if loc in (p["rooms"] as Array) and ResourceLoader.exists("res://assets/sprites/idle/%s.png" % p["id"]): cands.append(p)
  if cands.is_empty(): return {}
  var rng := RandomNumberGenerator.new()
@@ -1844,7 +1879,9 @@ func refresh_cards():
   # المكان اللي سحبت له الشخصية يتذكره
   for j in who.size():
    var sk := "%s|%s" % [location, who[j]]
-   if npc_spot.has(sk) and j < cs.size(): cs[j] = float(npc_spot[sk])
+   if npc_spot.has(sk) and j < cs.size():
+    var sv = npc_spot[sk]
+    cs[j] = sv.x if sv is Vector2 else float(sv)
  var vh: float = get_viewport_rect().size.y
  var vw: float = get_viewport_rect().size.x
  for i in who.size():
@@ -1870,6 +1907,18 @@ func refresh_cards():
   var post := ""
   if "/idle/" in path and not half_body:
    post = str(_idle_meta.get(path, {}).get("post", "stand"))
+  # داخل الغرفة: الشخصية واقفة على أرضية الغرفة بمقاس صحيح حسب عمق المكان (مو عملاقة قدام الكاميرا)
+  var staged: bool = explore_mode and sprite_focus.is_empty() and RoomsData.ROOMS.has(location) and full_body and not is_steam and not half_body
+  if staged:
+   var st: Dictionary = RoomsData.ROOMS[location].get("stage", {})
+   var sbase: float = vh * float(st.get("h", 0.52))
+   lift = vh * (1.0 - float(st.get("y", 0.80)))
+   if post == "sit": h = sbase * 0.68
+   elif post == "chair": h = sbase * 0.78
+   elif post == "lie": h = sbase * 0.5
+   elif post.begins_with("floor:"): h = sbase * float(post.get_slice(":", 1)) * float(tex.get_height()) / float(tex.get_width())
+   else: h = sbase
+  elif post != "":
    var base := vh * 0.72
    if post == "sit": h = base * 0.6
    elif post == "chair": h = base * 0.74
@@ -1879,6 +1928,31 @@ func refresh_cards():
     lift = 0.0
    elif post.begins_with("floor:"): h = base * float(post.get_slice(":", 1)) * float(tex.get_height()) / float(tex.get_width())
    else: h = base
+  var depth := {}
+  if staged:
+   # العمق: كل ما سحبتها لفوق تبعد وتصغر، ولتحت تقرب وتكبر
+   var st2: Dictionary = RoomsData.ROOMS[location].get("stage", {})
+   var sy: float = float(st2.get("y", 0.80))
+   var hz: float = sy - float(st2.get("h", 0.52)) * 0.95
+   var yf: float = sy
+   var spv = npc_spot.get("%s|%s" % [location, npc], null)
+   if spv is Vector2: yf = (spv as Vector2).y
+   var fac: float = (yf - hz) / maxf(sy - hz, 0.05)
+   h *= fac
+   lift = vh * (1.0 - yf)
+   depth = {"hz": hz, "y": yf, "unit": h / maxf(yf - hz, 0.01), "ymin": maxf(hz + 0.12, sy - 0.16), "ymax": minf(sy + 0.07, 0.95)}
+  var zones: Array = []
+  if staged:
+   # الشخصيات توقف بس على الأرضية الفاضية (مو فوق طاولة أو كنبة أو سرير)
+   zones = RoomsData.ROOMS[location].get("stage", {}).get("zones", [])
+   if not zones.is_empty():
+    var spk := "%s|%s" % [location, npc]
+    if npc_spot.has(spk):
+     cs[i] = snap_zone(float(cs[i]), zones)
+    else:
+     var zn: Array = zones[i % zones.size()]
+     var off: float = float(i / zones.size()) * 0.08 * (1.0 if i % 2 == 0 else -1.0)
+     cs[i] = clampf((float(zn[0]) + float(zn[1])) * 0.5 + off, float(zn[0]), float(zn[1]))
   var in_shower: bool = is_steam and location == "الحمام" and not cg_frame.visible
   if is_steam:
    h = minf(vh * 0.98, vw * 0.92 * float(tex.get_height()) / float(tex.get_width()))
@@ -1906,8 +1980,11 @@ func refresh_cards():
    sh.anchor_bottom = 1.0
    sh.offset_left = -w * 0.5
    sh.offset_right = w * 0.5
-   sh.offset_top = -lift - 26
-   sh.offset_bottom = -lift + 26
+   var shh: float = clampf(h * 0.05, 10.0, 26.0)
+   sh.offset_left = -w * (0.42 if post in ["sit", "chair", "lie"] or post.begins_with("floor:") else 0.34)
+   sh.offset_right = -sh.offset_left
+   sh.offset_top = -lift - shh
+   sh.offset_bottom = -lift + shh
    sprites_layer.add_child(sh)
   var b = TextureButton.new()
   b.texture_normal = tex
@@ -1931,11 +2008,36 @@ func refresh_cards():
    b.mouse_entered.connect(func(): b.modulate = Color(1.18, 1.14, 1.08))
    b.mouse_exited.connect(func(): b.modulate = Color.WHITE)
    b.set_meta("post", post if post != "" else "stand")
+   if not zones.is_empty(): b.set_meta("zones", zones)
+   if not depth.is_empty():
+    b.set_meta("depth", depth)
+    b.set_meta("aspect", float(tex.get_width()) / float(tex.get_height()))
+   var tk := Button.new()
+   tk.name = "TalkBtn"
+   tk.text = "كلّمها" if npc != "الشبح" else "كلّمها"
+   tk.focus_mode = Control.FOCUS_NONE
+   tk.add_theme_font_size_override("font_size", 15)
+   tk.add_theme_color_override("font_color", Color("#fff6e8"))
+   tk.add_theme_stylebox_override("normal", pill_style(Color(0.10, 0.10, 0.16, 0.78)))
+   tk.add_theme_stylebox_override("hover", pill_style(Color(0.25, 0.42, 0.7, 0.95)))
+   tk.add_theme_stylebox_override("pressed", pill_style(Color(0.82, 0.54, 0.35, 0.95)))
+   tk.anchor_left = 0.5
+   tk.anchor_right = 0.5
+   tk.grow_horizontal = Control.GROW_DIRECTION_BOTH
+   tk.offset_top = -40
+   tk.offset_bottom = -6
+   var tnpc: String = npc
+   tk.pressed.connect(func(): talk_to(tnpc))
+   b.add_child(tk)
    b.set_meta("simple", (post != "" and not post.begins_with("stand")) or "/poses/" in path or "/nora_poses/" in path or "/exercise/" in path or half_body or is_steam)
    b.gui_input.connect(func(ev): _sprite_input(ev, b, npc))
   else:
    b.mouse_filter = Control.MOUSE_FILTER_IGNORE
   var tint: Color = Color.WHITE.lerp(PERIOD_TINT[period], 0.5)
+  if staged and npc != "الشبح":
+   # نفس إضاءة المكان اللي واقفة فيه
+   var lc := bg_light(float(cs[i]), 1.0 - (lift + h * 0.5) / vh, (w / vw) * 0.6, (h / vh) * 0.8)
+   tint = Color(tint.r * lc.r, tint.g * lc.g, tint.b * lc.b)
   b.self_modulate = Color(tint.r, tint.g, tint.b, 0.82 if npc == "الشبح" else 1.0)
   sprites_layer.add_child(b)
   sprite_nodes[npc] = b
@@ -2764,6 +2866,15 @@ func refresh_hotspots():
   return
  var rd: Dictionary = RoomsData.ROOMS[location]
  var hs: Array = rd["hotspots"]
+ # الضغط على أرضية الغرفة (تحت الأغراض) يخلي ليان تمشي هناك
+ var fc := Control.new()
+ fc.name = "FloorCatch"
+ fc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ fc.mouse_filter = Control.MOUSE_FILTER_STOP
+ fc.gui_input.connect(func(ev):
+  if ev is InputEventMouseButton and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT and not (ev as InputEventMouseButton).pressed:
+   floor_tap((ev as InputEventMouseButton).global_position))
+ hotspot_layer.add_child(fc)
  choice_scroll.anchor_left = 0.015
  choice_scroll.anchor_right = 0.5
  choice_scroll.visible = menu_open or hs.is_empty()
@@ -2855,7 +2966,7 @@ func room_intro():
   dialogue.text = str(g[randi() % g.size()]) + "\n" + str(rd["desc"])
   if not daily_flags.has("touch_hint") and touch_enabled():
    daily_flags["touch_hint"] = true
-   note.text = "جديد: اسحب ليان يمين ويسار لتحركها، والمس راسها أو خدها أو كتفها أو يدها. ضغطة مطولة = حضن."
+   note.text = "اسحب ليان لأي مكان (لفوق تبعد ولتحت تقرب)، والمسها بأي مكان وترد عليك. ضغطة مطولة = حضن، وزر «كلّمها» للكلام."
  else:
   speaker.text = location
   dialogue.text = str(rd["desc"])
@@ -2872,7 +2983,8 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
   var mb := ev as InputEventMouseButton
   if mb.pressed:
    if _walking: return
-   _tch = {"b": b, "npc": npc, "start": mb.global_position, "t": Time.get_ticks_msec(), "local": mb.position, "drag": false, "x0": b.anchor_left}
+   var dp: Dictionary = b.get_meta("depth", {})
+   _tch = {"b": b, "npc": npc, "start": mb.global_position, "t": Time.get_ticks_msec(), "local": mb.position, "drag": false, "x0": b.anchor_left, "y0": float(dp.get("y", 0.0))}
   elif _tch.get("b", null) == b:
    var st: Dictionary = _tch
    _tch = {}
@@ -2886,18 +2998,21 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
      var f: Vector2 = ((st["local"] as Vector2) / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) - fr.position) / fr.size
      zone = touch_zone(f, bool(b.get_meta("simple", false)))
     if zone == "":
-     talk_to(npc)
+     talk_to(npc)   # الحمام: اللمس مقفل، الضغط يفتح الكلام
     else:
      touch_react(npc, zone, Time.get_ticks_msec() - int(st["t"]) >= 550, b, st["start"])
   b.accept_event()
  elif ev is InputEventMouseMotion and _tch.get("b", null) == b:
   var d: Vector2 = (ev as InputEventMouseMotion).global_position - (_tch["start"] as Vector2)
-  if not bool(_tch["drag"]) and absf(d.x) > 18.0 and touch_enabled():
+  if not bool(_tch["drag"]) and d.length() > 18.0 and touch_enabled():
    _tch["drag"] = true
   if bool(_tch["drag"]):
    var vw: float = get_viewport_rect().size.x
-   var nx := clampf(float(_tch["x0"]) + d.x / vw, 0.1, 0.9)
-   _set_sprite_x(nx, b, b.get_meta("shadow") if b.has_meta("shadow") else null)
+   var nx := clampf(float(_tch["x0"]) + d.x / vw, 0.08, 0.92)
+   var shn = b.get_meta("shadow") if b.has_meta("shadow") else null
+   _set_sprite_x(nx, b, shn)
+   if b.has_meta("depth"):
+    _set_sprite_depth(b, shn, float(_tch["y0"]) + d.y / get_viewport_rect().size.y)
    b.rotation_degrees = clampf((ev as InputEventMouseMotion).relative.x * 0.35, -5.0, 5.0)
   b.accept_event()
 
@@ -2930,25 +3045,28 @@ func fig_rect(b: Control) -> Rect2:
 # f = موضع اللمسة داخل جسم الشخصية (0..1)
 static func touch_zone(f: Vector2, simple: bool) -> String:
  if simple:
-  return "head" if f.y < 0.2 else ""
+  if f.y < 0.22: return "head"
+  if f.y > 0.84: return "feet"
+  return "body"
  if f.y < 0.11: return "head"
  if f.y < 0.2:
   return "face" if (f.x > 0.3 and f.x < 0.7) else "head"
  if f.y < 0.32 and (f.x < 0.4 or f.x > 0.6): return "shoulder"
  if f.y >= 0.32 and f.y < 0.62 and (f.x < 0.3 or f.x > 0.7): return "hand"
- return ""
+ if f.y > 0.88: return "feet"
+ return "body"
 
 func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector2):
  var kind := zone
  if held:
-  kind = "hold_hand" if zone == "hand" else ("hold_shoulder" if zone == "shoulder" else "hold_head")
+  kind = "hold_hand" if zone == "hand" else ("hold_shoulder" if zone in ["shoulder", "body"] else "hold_head")
  var now := Time.get_ticks_msec()
- if zone in ["shoulder", "hand"] and not held:
+ if zone in ["shoulder", "hand", "body", "feet"] and not held:
   _taps = _taps.filter(func(t): return now - int(t) < 1600)
   _taps.append(now)
  else:
   _taps.clear()
- if not held and zone in ["shoulder", "hand"] and _taps.size() >= 3:
+ if not held and zone in ["shoulder", "hand", "body", "feet"] and _taps.size() >= 3:
   kind = "tickle"
   _taps.clear()
  var pk := "%d_%d" % [day, period]
@@ -2988,25 +3106,195 @@ func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector
  if gain > 0: note.text = "%s (+%d علاقة)" % ["لمسة حلوة" if not kind.begins_with("hold") else "حضن", gain]
  elif gain < 0: note.text = "ليان انزعجت شوي (%d علاقة)" % gain
  else: note.text = ""
- _touch_fx(b, gpos, warm)
+ _touch_fx(b, gpos, warm, kind)
+ bubble(b, line)
+ _last_input = Time.get_ticks_msec()
  update_status()
 
+# فقاعة كلام فوق راس الشخصية
+var _bubble_node: Control = null
+func bubble(b: Control, text: String):
+ if not is_instance_valid(b) or not is_instance_valid(fx_layer) or text == "": return
+ if is_instance_valid(_bubble_node): _bubble_node.queue_free()
+ var t := text
+ var a := t.find("«")
+ var z := t.rfind("»")
+ if a >= 0 and z > a: t = t.substr(a + 1, z - a - 1)
+ var p := PanelContainer.new()
+ p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ var stl := mk_style(Color(1, 0.98, 0.95, 0.96), 18, Color(0.85, 0.6, 0.65, 0.9), 2)
+ stl.content_margin_left = 14
+ stl.content_margin_right = 14
+ stl.content_margin_top = 8
+ stl.content_margin_bottom = 8
+ p.add_theme_stylebox_override("panel", stl)
+ var lb := Label.new()
+ lb.text = t
+ lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+ lb.custom_minimum_size = Vector2(minf(320.0, 40.0 + t.length() * 11.0), 0)
+ lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+ lb.add_theme_font_size_override("font_size", 19)
+ lb.add_theme_color_override("font_color", Color("#3a2430"))
+ p.add_child(lb)
+ fx_layer.add_child(p)
+ _bubble_node = p
+ await get_tree().process_frame
+ if not is_instance_valid(p) or not is_instance_valid(b): return
+ var r := b.get_global_rect()
+ var fr := fig_rect(b)
+ var top := Vector2(r.position.x + r.size.x * (fr.position.x + fr.size.x * 0.5), r.position.y + r.size.y * fr.position.y)
+ var vr := get_viewport_rect().size
+ var ps := p.size
+ p.position = Vector2(clampf(top.x - ps.x * 0.5, 8.0, vr.x - ps.x - 8.0), clampf(top.y - ps.y - 10.0, 70.0, vr.y - ps.y - 140.0))
+ p.modulate.a = 0.0
+ var tw := p.create_tween()
+ tw.tween_property(p, "modulate:a", 1.0, 0.15)
+ tw.tween_interval(2.4 + t.length() * 0.05)
+ tw.tween_property(p, "modulate:a", 0.0, 0.4)
+ tw.tween_callback(p.queue_free)
+
+# اضغط على أرضية الغرفة: ليان تمشي للمكان اللي ضغطت عليه
+func floor_tap(pos: Vector2):
+ var b: Control = sprite_nodes.get("ليان", null)
+ if b == null or not is_instance_valid(b) or not b.has_meta("depth") or _walking or not touch_enabled(): return
+ var vr := get_viewport_rect().size
+ var dp: Dictionary = b.get_meta("depth")
+ var tx := clampf(pos.x / vr.x, 0.08, 0.92)
+ if b.has_meta("zones"): tx = snap_zone(tx, b.get_meta("zones"))
+ var ty := clampf(pos.y / vr.y, float(dp["ymin"]), float(dp["ymax"]))
+ if not str(b.get_meta("post", "stand")).begins_with("stand"):
+  bubble(b, str(["خلني مرتاحة هنا... تعال أنت.", "تعبانة، قرّب أنت.", "مو قايمة الحين ههه."][randi() % 3]))
+  return
+ var sh = b.get_meta("shadow") if b.has_meta("shadow") else null
+ var x0: float = b.anchor_left
+ var y0: float = float(dp["y"])
+ var dist := Vector2((tx - x0) * 1.6, (ty - y0) * 3.0).length()
+ var dur: float = clampf(dist * 1.6, 0.35, 2.2)
+ _walking = true
+ var tw := b.create_tween()
+ tw.tween_method(func(t: float):
+  _set_sprite_x(lerpf(x0, tx, t), b, sh)
+  _set_sprite_depth(b, sh, lerpf(y0, ty, t)), 0.0, 1.0, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+ var steps := maxi(2, int(dur / 0.24))
+ var bob := b.create_tween()
+ for i in steps:
+  bob.tween_property(b, "rotation_degrees", 1.8 if i % 2 == 0 else -1.8, dur / steps * 0.5)
+  bob.tween_property(b, "rotation_degrees", 0.0, dur / steps * 0.5)
+ tw.finished.connect(func():
+  _walking = false
+  if not is_instance_valid(b): return
+  npc_spot["%s|%s" % [location, "ليان"]] = Vector2(b.anchor_left, float((b.get_meta("depth") as Dictionary)["y"]))
+  bubble(b, str(["جيت، وش تبي؟", "هاه؟ ناديتني؟", "هنا زين؟", "أمرني يا قلبي."][randi() % 4])))
+ _last_input = Time.get_ticks_msec()
+
+# ليان تبادر بالكلام لو قعدت معها شوي بدون ما تسوي شي
+var _last_input := 0
+var _last_init := 0
+const INIT_LINES := [["صباح الخير... تبي فطور؟", "قوم معي نرتب المطبخ؟", "شربت قهوتك؟"],
+ ["وش فيك ساكت؟", "تعال ساعدني شوي.", "تدري إنك وحشتني اليوم؟"],
+ ["تعال اقعد جنبي شوي.", "نطلع بكرة؟", "لا تطالعني كذا، أستحي!"],
+ ["تعبت اليوم... تعال نرتاح.", "الوقت تأخر، ننام؟", "تصبح على خير يا قلبي."]]
+func _input(event: InputEvent):
+ if event is InputEventMouseButton or event is InputEventScreenTouch: _last_input = Time.get_ticks_msec()
+
+func _initiative_tick():
+ var now := Time.get_ticks_msec()
+ if not room_active() or not sprite_nodes.has("ليان") or _walking or not _tch.is_empty(): return
+ if now - _last_input < 28000 or now - _last_init < 45000: return
+ _last_init = now
+ var lines: Array = INIT_LINES[clampi(period, 0, 3)]
+ if relationship < 35: lines = ["...", "لسا زعلانة منك."]
+ var ln: String = str(lines[randi() % lines.size()])
+ speaker.text = "ليان"
+ dialogue.text = ln
+ bubble(sprite_nodes["ليان"], ln)
+
+# تحريك لفوق/تحت داخل أرضية الغرفة مع تغيير الحجم حسب البعد
+func _set_sprite_depth(b: Control, sh, yf: float):
+ var dp: Dictionary = b.get_meta("depth")
+ var vh: float = get_viewport_rect().size.y
+ yf = clampf(yf, float(dp["ymin"]), float(dp["ymax"]))
+ var h: float = float(dp["unit"]) * (yf - float(dp["hz"]))
+ var w: float = h * float(b.get_meta("aspect", 0.5))
+ var lift: float = vh * (1.0 - yf)
+ b.offset_left = -w * 0.5
+ b.offset_right = w * 0.5
+ b.offset_top = -lift - h
+ b.offset_bottom = -lift
+ b.pivot_offset = Vector2(w * 0.5, h)
+ dp["y"] = yf
+ b.set_meta("depth", dp)
+ if sh != null and is_instance_valid(sh):
+  var shh: float = clampf(h * 0.05, 8.0, 26.0)
+  sh.offset_left = -w * 0.38
+  sh.offset_right = w * 0.38
+  sh.offset_top = -lift - shh
+  sh.offset_bottom = -lift + shh
+
+func snap_zone(x: float, zones: Array) -> float:
+ var best := x
+ var bd := 99.0
+ for z in zones:
+  var c := clampf(x, float(z[0]), float(z[1]))
+  if absf(c - x) < bd:
+   bd = absf(c - x)
+   best = c
+ return best
+
 func _drag_end(b: Control, npc: String, gpos: Vector2):
- npc_spot["%s|%s" % [location, npc]] = b.anchor_left
+ if b.has_meta("zones"):
+  # لو تركتها فوق أثاث ترجع لأقرب أرضية فاضية
+  var sx := snap_zone(b.anchor_left, b.get_meta("zones"))
+  if absf(sx - b.anchor_left) > 0.002:
+   var shn = b.get_meta("shadow") if b.has_meta("shadow") else null
+   var tw := b.create_tween()
+   tw.tween_method(_set_sprite_x.bind(b, shn), b.anchor_left, sx, 0.3).set_trans(Tween.TRANS_SINE)
+   b.anchor_left = b.anchor_left
+   await tw.finished
+   if not is_instance_valid(b): return
+ if b.has_meta("depth"):
+  npc_spot["%s|%s" % [location, npc]] = Vector2(b.anchor_left, float((b.get_meta("depth") as Dictionary)["y"]))
+ else:
+  npc_spot["%s|%s" % [location, npc]] = b.anchor_left
  var lines: Dictionary = TouchData.lines_for(npc)
  var arr: Array = lines.get("drag", ["..."])
  speaker.text = npc
  dialogue.text = str(arr[randi() % arr.size()])
  note.text = ""
  _touch_fx(b, gpos, false)
+ bubble(b, dialogue.text)
 
 # نقزة صغيرة للشخصية + دائرة مكان اللمسة + قلوب لو الرد حلو
-func _touch_fx(b: Control, gpos: Vector2, hearts: bool):
+func _touch_fx(b: Control, gpos: Vector2, hearts: bool, kind: String = ""):
  if fx_level == 0 or not is_instance_valid(b) or not is_instance_valid(fx_layer): return
  var y0: float = b.position.y
- var hop := b.create_tween()
- hop.tween_property(b, "position:y", y0 - 10.0, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
- hop.tween_property(b, "position:y", y0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+ var x0: float = b.position.x
+ var side: float = -1.0 if gpos.x < b.get_global_rect().get_center().x else 1.0
+ var mv := b.create_tween()
+ if kind in ["head", "face"]:
+  # تميل براسها ناحية يدك
+  mv.tween_property(b, "rotation_degrees", 4.0 * side, 0.18).set_trans(Tween.TRANS_SINE)
+  mv.parallel().tween_property(b, "position:y", y0 - 4.0, 0.18)
+  mv.tween_interval(0.25)
+  mv.tween_property(b, "rotation_degrees", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
+  mv.parallel().tween_property(b, "position:y", y0, 0.4)
+ elif kind in ["tickle", "feet"]:
+  # تتلوى من الضحك
+  for i in 6:
+   mv.tween_property(b, "position:x", x0 + (7.0 if i % 2 == 0 else -7.0), 0.06)
+   mv.parallel().tween_property(b, "rotation_degrees", 3.0 if i % 2 == 0 else -3.0, 0.06)
+  mv.tween_property(b, "position:x", x0, 0.08)
+  mv.parallel().tween_property(b, "rotation_degrees", 0.0, 0.08)
+ elif kind.begins_with("hold"):
+  # تقرب منك وتحضنك
+  mv.tween_property(b, "position:y", y0 - 8.0, 0.25).set_trans(Tween.TRANS_SINE)
+  mv.parallel().tween_property(b, "rotation_degrees", -3.0 * side, 0.25)
+  mv.tween_interval(0.7)
+  mv.tween_property(b, "position:y", y0, 0.35).set_trans(Tween.TRANS_SINE)
+  mv.parallel().tween_property(b, "rotation_degrees", 0.0, 0.35)
+ else:
+  mv.tween_property(b, "position:y", y0 - 10.0, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+  mv.tween_property(b, "position:y", y0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
  var lp: Vector2 = fx_layer.get_global_transform().affine_inverse() * gpos
  var ring := Panel.new()
  ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
