@@ -40,7 +40,9 @@ jobs:
         run: |
           B="${{ github.event.inputs.backend }}"; [ -z "$B" ] && B=auto
           if [ "$B" = "auto" ]; then
-            if [ -n "$CF_ACCOUNT_ID" ] && [ -n "$CF_API_TOKEN" ]; then B=cf; else B=local; fi
+            if [ -n "$CF_ACCOUNT_ID" ] && [ -n "$CF_API_TOKEN" ]; then B=cf; else
+              echo "::error title=secrets::ناقص CF_ACCOUNT_ID أو CF_API_TOKEN في Settings > Secrets and variables > Actions (الرسم على معالج GitHub بطيء جدًا، شغّله يدويًا بـ backend=local لو تبي)"; exit 1
+            fi
           fi
           echo "BACKEND=$B" >> "$GITHUB_ENV"
           echo "::notice title=backend::$B"
