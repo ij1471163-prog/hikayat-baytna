@@ -3054,7 +3054,7 @@ func room_intro():
 
 # ================= لمس الشخصيات وسحبها =================
 # اسحب الشخصية يمين/يسار تتحرك وتبقى مكانها. المس الراس/الخد/الكتف/اليد ترد عليك.
-# ضغطة مطولة = حضن/مسك يد، ضغطات سريعة على الكتف أو اليد = دغدغة. باقي الجسم يفتح الحديث العادي.
+# كل الجسم يرد (راس، خد، كتف، ذراع، يد، خصر، رجل، قدم). ضغطة مطولة = حضن، ضغطات سريعة = دغدغة.
 func touch_enabled() -> bool:
  return location != "الحمام" and bath_mode == ""
 
@@ -3125,29 +3125,39 @@ func fig_rect(b: Control) -> Rect2:
 
 # f = موضع اللمسة داخل جسم الشخصية (0..1)
 static func touch_zone(f: Vector2, simple: bool) -> String:
+ # كل الجسم يرد: راس، خد، كتف، ذراع، يد، خصر/ظهر، رجل، قدم
  if simple:
   if f.y < 0.22: return "head"
   if f.y > 0.84: return "feet"
-  return "body"
+  if f.y > 0.55: return "leg"
+  return "waist"
  if f.y < 0.11: return "head"
  if f.y < 0.2:
   return "face" if (f.x > 0.3 and f.x < 0.7) else "head"
  if f.y < 0.32 and (f.x < 0.4 or f.x > 0.6): return "shoulder"
- if f.y >= 0.32 and f.y < 0.62 and (f.x < 0.3 or f.x > 0.7): return "hand"
+ if f.y < 0.45 and (f.x < 0.3 or f.x > 0.7): return "arm"
+ if f.y < 0.62 and (f.x < 0.3 or f.x > 0.7): return "hand"
  if f.y > 0.88: return "feet"
- return "body"
+ if f.y > 0.58: return "leg"
+ return "waist"
+
+const TICKLE_ZONES := ["shoulder", "arm", "hand", "body", "waist", "leg", "feet"]
 
 func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector2):
  var kind := zone
  if held:
-  kind = "hold_hand" if zone == "hand" else ("hold_shoulder" if zone in ["shoulder", "body"] else "hold_head")
+  match zone:
+   "hand", "arm": kind = "hold_hand"
+   "waist", "leg", "feet": kind = "hold_waist"
+   "shoulder", "body": kind = "hold_shoulder"
+   _: kind = "hold_head"
  var now := Time.get_ticks_msec()
- if zone in ["shoulder", "hand", "body", "feet"] and not held:
+ if zone in TICKLE_ZONES and not held:
   _taps = _taps.filter(func(t): return now - int(t) < 1600)
   _taps.append(now)
  else:
   _taps.clear()
- if not held and zone in ["shoulder", "hand", "body", "feet"] and _taps.size() >= 3:
+ if not held and zone in TICKLE_ZONES and _taps.size() >= 3:
   kind = "tickle"
   _taps.clear()
  var pk := "%d_%d" % [day, period]
@@ -3179,7 +3189,7 @@ func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector
  speaker.text = npc
  dialogue.text = line
  # ليان تغار لو لمست وحدة ثانية قدامها
- if npc != "ليان" and npc != "الشبح" and sprite_nodes.has("ليان") and kind in ["face", "hand", "hold_hand", "hold_head", "hold_shoulder", "tickle"]:
+ if npc != "ليان" and npc != "الشبح" and sprite_nodes.has("ليان") and kind in ["face", "hand", "waist", "leg", "hold_hand", "hold_head", "hold_shoulder", "hold_waist", "tickle"]:
   var jl: String = str(TouchData.JEALOUS[randi() % TouchData.JEALOUS.size()])
   dialogue.text = line + "\n" + jl
   gain = rel_once("jealous", -2)
@@ -3359,13 +3369,18 @@ func _touch_fx(b: Control, gpos: Vector2, hearts: bool, kind: String = ""):
   mv.tween_interval(0.25)
   mv.tween_property(b, "rotation_degrees", 0.0, 0.4).set_trans(Tween.TRANS_SINE)
   mv.parallel().tween_property(b, "position:y", y0, 0.4)
- elif kind in ["tickle", "feet"]:
+ elif kind in ["tickle", "feet", "leg"]:
   # تتلوى من الضحك
   for i in 6:
    mv.tween_property(b, "position:x", x0 + (7.0 if i % 2 == 0 else -7.0), 0.06)
    mv.parallel().tween_property(b, "rotation_degrees", 3.0 if i % 2 == 0 else -3.0, 0.06)
   mv.tween_property(b, "position:x", x0, 0.08)
   mv.parallel().tween_property(b, "rotation_degrees", 0.0, 0.08)
+ elif kind == "waist":
+  # تتمايل وتلتفت لك
+  mv.tween_property(b, "rotation_degrees", -3.0 * side, 0.2).set_trans(Tween.TRANS_SINE)
+  mv.tween_property(b, "rotation_degrees", 2.0 * side, 0.25).set_trans(Tween.TRANS_SINE)
+  mv.tween_property(b, "rotation_degrees", 0.0, 0.3).set_trans(Tween.TRANS_SINE)
  elif kind.begins_with("hold"):
   # تقرب منك وتحضنك
   mv.tween_property(b, "position:y", y0 - 8.0, 0.25).set_trans(Tween.TRANS_SINE)
