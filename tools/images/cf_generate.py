@@ -68,6 +68,31 @@ def call(model: str, prompt: str, refs: list, w: int, h: int, seed) -> Image.Ima
     return Image.open(io.BytesIO(base64.b64decode(b64)))
 
 
+_pipe = None
+def local_call(model: str, prompt: str, refs: list, w: int, h: int, seed) -> Image.Image:
+    """نفس النموذج (FLUX.2 Klein 4B مفتوح المصدر) يشتغل على معالج GitHub نفسه بدون أي حساب."""
+    global _pipe
+    import torch, gc
+    from diffusers import Flux2KleinPipeline
+    if _pipe is None:
+        torch.set_num_threads(os.cpu_count() or 4)
+        _pipe = Flux2KleinPipeline.from_pretrained("black-forest-labs/FLUX.2-klein-4B", torch_dtype=torch.bfloat16, low_cpu_mem_usage=True)
+        gc.collect()
+    # على المعالج نرسم بحوالي 1 ميغابكسل وبعدين يتكبر المقاس
+    scale = min(1.0, (1024 * 1024 / float(w * h)) ** 0.5)
+    lw, lh = int(w * scale) // 16 * 16, int(h * scale) // 16 * 16
+    kw = dict(prompt=prompt, width=lw, height=lh, num_inference_steps=4, guidance_scale=1.0,
+              generator=torch.Generator("cpu").manual_seed(int(seed if seed is not None else 7)))
+    if refs:
+        imgs = [Image.open(io.BytesIO(ref_bytes(r))).convert("RGB") for r in refs[:4]]
+        kw["image"] = imgs if len(imgs) > 1 else imgs[0]
+    t0 = time.time()
+    with torch.inference_mode():
+        out = _pipe(**kw).images[0]
+    print(f"  رسم {lw}x{lh} في {time.time() - t0:.0f} ثانية", flush=True)
+    return out
+
+
 def main():
     spec = json.loads(REQ.read_text(encoding="utf-8"))
     only = [s.strip() for s in os.environ.get("ONLY", "").split(",") if s.strip()] or spec.get("run", [])
@@ -87,7 +112,7 @@ def main():
         model = j.get("model", spec.get("model", "klein-4b"))
         print(f"[{j['name']}] {model} {w}x{h} refs={refs}")
         try:
-            im = call(model, prompt, refs, w, h, j.get("seed"))
+            im = (local_call if os.environ.get("BACKEND") == "local" else call)(model, prompt, refs, w, h, j.get("seed"))
             raw = OUT / f"{j['name']}.png"
             im.save(raw)
             dst = ROOT / j["target"]
