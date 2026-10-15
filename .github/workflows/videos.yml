@@ -1,0 +1,41 @@
+name: Character Videos
+# أي فيديو يترفع في incoming/videos/<الشخصية>/ يتحول لصيغة اللعبة (.ogv) ويتركب، وبعدها يبني APK
+on:
+  push:
+    branches: [main]
+    paths:
+      - "incoming/videos/**"
+      - "!incoming/videos/**/README-AR.md"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: character-videos
+  cancel-in-progress: false
+
+jobs:
+  convert:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: Convert videos
+        run: python3 tools/videos/convert_videos.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Commit to main
+        if: env.DONE != '0' && env.DONE != ''
+        run: |
+          git config user.name "videos-bot"
+          git config user.email "videos-bot@users.noreply.github.com"
+          git add -A assets/videos incoming/videos video_data.gd
+          git commit -q -m "Character videos converted (run ${{ github.run_id }})"
+          git pull -q --rebase origin main
+          git push -q origin HEAD:main
+      - name: Build APK
+        if: env.DONE != '0' && env.DONE != ''
+        run: gh workflow run build-android.yml --ref main && echo "::notice title=apk::بدأ بناء APK فيه الفيديوهات الجديدة"

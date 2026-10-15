@@ -2276,10 +2276,91 @@ func talk_to(npc: String):
   interact()
   choice("روتين ليان اليومي", layan_routine)
   choice("أعطها هدية", func(): gift_menu("ليان"))
+  add_video_choice(npc)
   choice("رجوع", func(): go(location))
  else:
   character_scene(npc)
   choice("أعطه هدية", func(): gift_menu(npc))
+  add_video_choice(npc)
+
+# ================= فيديوهات الشخصيات (ترفعها في incoming/videos/<الشخصية>/) =================
+func npc_videos(npc: String) -> Array:
+ var scr = load("res://video_data.gd")
+ if scr == null: return []
+ var vids: Array = []
+ for v in (scr.VIDEOS as Dictionary).get(npc, []):
+  if ResourceLoader.exists(str(v)): vids.append(str(v))
+ return vids
+
+func add_video_choice(npc: String):
+ var vids := npc_videos(npc)
+ if vids.is_empty(): return
+ var nm := "سلمى" if npc == "الشبح" else npc
+ choice("فيديوهات %s (%d)" % [nm, vids.size()], func(): video_menu(npc))
+
+func video_menu(npc: String):
+ var vids := npc_videos(npc)
+ var nm := "سلمى" if npc == "الشبح" else npc
+ say(nm, "اختر فيديو.")
+ for i in vids.size():
+  var path: String = vids[i]
+  choice("فيديو %d" % (i + 1), func(): play_video(path, func(): video_menu(npc)))
+ choice("رجوع", func(): talk_to(npc))
+
+var _video_box: Control = null
+func play_video(path: String, after: Callable = Callable()):
+ var st = load(path)
+ if st == null:
+  note.text = "ما قدرت أشغل الفيديو."
+  return
+ if is_instance_valid(_video_box): _video_box.queue_free()
+ var box := Control.new()
+ box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ box.mouse_filter = Control.MOUSE_FILTER_STOP
+ var bgc := ColorRect.new()
+ bgc.color = Color.BLACK
+ bgc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ box.add_child(bgc)
+ var vp := VideoStreamPlayer.new()
+ vp.stream = st
+ vp.expand = true
+ vp.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ box.add_child(vp)
+ var close := Button.new()
+ close.text = "إغلاق"
+ close.focus_mode = Control.FOCUS_NONE
+ close.add_theme_font_size_override("font_size", 20)
+ close.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.8)))
+ close.anchor_left = 1.0
+ close.anchor_right = 1.0
+ close.offset_left = -130
+ close.offset_right = -16
+ close.offset_top = 16
+ close.offset_bottom = 60
+ box.add_child(close)
+ var rep := Button.new()
+ rep.text = "تكرار: لا"
+ rep.focus_mode = Control.FOCUS_NONE
+ rep.add_theme_font_size_override("font_size", 18)
+ rep.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.8)))
+ rep.offset_left = 16
+ rep.offset_right = 140
+ rep.offset_top = 16
+ rep.offset_bottom = 60
+ box.add_child(rep)
+ rep.pressed.connect(func():
+  vp.loop = not vp.loop
+  rep.text = "تكرار: نعم" if vp.loop else "تكرار: لا")
+ var finish := func():
+  if is_instance_valid(box): box.queue_free()
+  if after.is_valid(): after.call()
+ close.pressed.connect(finish)
+ vp.finished.connect(func():
+  if not vp.loop: finish.call())
+ add_child(box)
+ _video_box = box
+ vp.play()
 
 func quest_dialogue(qid: String, st: Dictionary, i: int):
  var lines: Array = st["lines"]

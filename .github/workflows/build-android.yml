@@ -9,6 +9,7 @@ on:
       - "art/**"
       - ".github/workflows/ai-images.yml"
       - ".github/workflows/images.yml"
+      - ".github/workflows/videos.yml"
 
 jobs:
   build-apk:
