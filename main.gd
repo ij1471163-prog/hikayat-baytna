@@ -50,6 +50,7 @@ const RoomsData = preload("res://rooms_data.gd")
 const TalkData = preload("res://talk_data.gd")
 const FamilyData = preload("res://family_data.gd")
 const ScenesData = preload("res://scenes_data.gd")
+const TouchData = preload("res://touch_data.gd")
 # نقاط التفاعل داخل الغرف
 var hotspot_layer: Control
 var exits_box: HFlowContainer
@@ -951,6 +952,12 @@ const TUB_RECT := [0.80, 0.62, 0.20, 0.20]
 var bath_mode := ""
 var scene_layer: Control = null
 var _sh := {}
+# اللمس والسحب
+var _tch := {}
+var _taps: Array = []
+var _touch_pk := ""
+var _touch_n := {}
+var npc_spot := {}
 var current_cg_path := ""
 var _shadow_tex: Texture2D = null
 func shadow_texture() -> Texture2D:
@@ -1784,6 +1791,11 @@ func refresh_cards():
     if x > 0.88 or x < 0.12: x = others[k + 1] if k + 1 < others.size() else spot
     cs.append(clampf(x, 0.12, 0.88))
     k += 1
+ if explore_mode and sprite_focus.is_empty():
+  # المكان اللي سحبت له الشخصية يتذكره
+  for j in who.size():
+   var sk := "%s|%s" % [location, who[j]]
+   if npc_spot.has(sk) and j < cs.size(): cs[j] = float(npc_spot[sk])
  var vh: float = get_viewport_rect().size.y
  var vw: float = get_viewport_rect().size.x
  for i in who.size():
@@ -1853,7 +1865,8 @@ func refresh_cards():
   if explore_mode and sprite_focus.is_empty():
    b.mouse_entered.connect(func(): b.modulate = Color(1.18, 1.14, 1.08))
    b.mouse_exited.connect(func(): b.modulate = Color.WHITE)
-   b.pressed.connect(func(): talk_to(npc))
+   b.set_meta("simple", "/poses/" in path or "/nora_poses/" in path or "/exercise/" in path or half_body or is_steam)
+   b.gui_input.connect(func(ev): _sprite_input(ev, b, npc))
   else:
    b.mouse_filter = Control.MOUSE_FILTER_IGNORE
   var tint: Color = Color.WHITE.lerp(PERIOD_TINT[period], 0.5)
@@ -2768,9 +2781,192 @@ func room_intro():
   var g: Array = TalkData.GREET.get(period, TalkData.GREET[0])
   speaker.text = "ليان"
   dialogue.text = str(g[randi() % g.size()]) + "\n" + str(rd["desc"])
+  if not daily_flags.has("touch_hint") and touch_enabled():
+   daily_flags["touch_hint"] = true
+   note.text = "جديد: اسحب ليان يمين ويسار لتحركها، والمس راسها أو خدها أو كتفها أو يدها. ضغطة مطولة = حضن."
  else:
   speaker.text = location
   dialogue.text = str(rd["desc"])
+
+# ================= لمس الشخصيات وسحبها =================
+# اسحب الشخصية يمين/يسار تتحرك وتبقى مكانها. المس الراس/الخد/الكتف/اليد ترد عليك.
+# ضغطة مطولة = حضن/مسك يد، ضغطات سريعة على الكتف أو اليد = دغدغة. باقي الجسم يفتح الحديث العادي.
+func touch_enabled() -> bool:
+ return location != "الحمام" and bath_mode == ""
+
+func _sprite_input(ev: InputEvent, b: Control, npc: String):
+ if not is_instance_valid(b): return
+ if ev is InputEventMouseButton and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+  var mb := ev as InputEventMouseButton
+  if mb.pressed:
+   if _walking: return
+   _tch = {"b": b, "npc": npc, "start": mb.global_position, "t": Time.get_ticks_msec(), "local": mb.position, "drag": false, "x0": b.anchor_left}
+  elif _tch.get("b", null) == b:
+   var st: Dictionary = _tch
+   _tch = {}
+   b.rotation_degrees = 0.0
+   if bool(st["drag"]):
+    _drag_end(b, npc, mb.global_position)
+   else:
+    var zone := ""
+    if touch_enabled():
+     var fr := fig_rect(b)
+     var f: Vector2 = ((st["local"] as Vector2) / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) - fr.position) / fr.size
+     zone = touch_zone(f, bool(b.get_meta("simple", false)))
+    if zone == "":
+     talk_to(npc)
+    else:
+     touch_react(npc, zone, Time.get_ticks_msec() - int(st["t"]) >= 550, b, st["start"])
+  b.accept_event()
+ elif ev is InputEventMouseMotion and _tch.get("b", null) == b:
+  var d: Vector2 = (ev as InputEventMouseMotion).global_position - (_tch["start"] as Vector2)
+  if not bool(_tch["drag"]) and absf(d.x) > 18.0 and touch_enabled():
+   _tch["drag"] = true
+  if bool(_tch["drag"]):
+   var vw: float = get_viewport_rect().size.x
+   var nx := clampf(float(_tch["x0"]) + d.x / vw, 0.1, 0.9)
+   _set_sprite_x(nx, b, b.get_meta("shadow") if b.has_meta("shadow") else null)
+   b.rotation_degrees = clampf((ev as InputEventMouseMotion).relative.x * 0.35, -5.0, 5.0)
+  b.accept_event()
+
+# حدود جسم الشخصية داخل الصورة (بعض الصور فيها فراغ شفاف جنب الشخصية) كنسبة 0..1
+var _fig_cache := {}
+func fig_rect(b: Control) -> Rect2:
+ var tb := b as TextureButton
+ if tb == null or tb.texture_click_mask == null: return Rect2(0, 0, 1, 1)
+ var key := tb.texture_normal.resource_path
+ if _fig_cache.has(key): return _fig_cache[key]
+ var mk: BitMap = tb.texture_click_mask
+ var sz := mk.get_size()
+ var x0 := sz.x
+ var x1 := -1
+ var y0 := sz.y
+ var y1 := -1
+ for y in range(0, sz.y, 2):
+  for x in range(0, sz.x, 2):
+   if mk.get_bit(x, y):
+    x0 = mini(x0, x)
+    x1 = maxi(x1, x)
+    y0 = mini(y0, y)
+    y1 = maxi(y1, y)
+ var r := Rect2(0, 0, 1, 1)
+ if x1 > x0 and y1 > y0:
+  r = Rect2(float(x0) / sz.x, float(y0) / sz.y, float(x1 - x0 + 2) / sz.x, float(y1 - y0 + 2) / sz.y)
+ _fig_cache[key] = r
+ return r
+
+# f = موضع اللمسة داخل جسم الشخصية (0..1)
+static func touch_zone(f: Vector2, simple: bool) -> String:
+ if simple:
+  return "head" if f.y < 0.2 else ""
+ if f.y < 0.11: return "head"
+ if f.y < 0.2:
+  return "face" if (f.x > 0.3 and f.x < 0.7) else "head"
+ if f.y < 0.32 and (f.x < 0.4 or f.x > 0.6): return "shoulder"
+ if f.y >= 0.32 and f.y < 0.62 and (f.x < 0.3 or f.x > 0.7): return "hand"
+ return ""
+
+func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector2):
+ var kind := zone
+ if held:
+  kind = "hold_hand" if zone == "hand" else ("hold_shoulder" if zone == "shoulder" else "hold_head")
+ var now := Time.get_ticks_msec()
+ if zone in ["shoulder", "hand"] and not held:
+  _taps = _taps.filter(func(t): return now - int(t) < 1600)
+  _taps.append(now)
+ else:
+  _taps.clear()
+ if not held and zone in ["shoulder", "hand"] and _taps.size() >= 3:
+  kind = "tickle"
+  _taps.clear()
+ var pk := "%d_%d" % [day, period]
+ if _touch_pk != pk:
+  _touch_pk = pk
+  _touch_n = {}
+ _touch_n[npc] = int(_touch_n.get(npc, 0)) + 1
+ var lines: Dictionary = TouchData.lines_for(npc)
+ var key := kind
+ if npc == "ليان" and relationship < 35: key = "cold"
+ elif int(_touch_n[npc]) > (9 if npc == "ليان" else 4) and npc != "الشبح": key = "annoyed"
+ var arr: Array = lines.get(key, lines.get(zone, lines.get("any", [])))
+ if arr.is_empty(): arr = lines.get("any", ["..."])
+ var line: String = str(arr[randi() % arr.size()])
+ var gain := 0
+ var warm := false
+ if npc == "ليان":
+  if key == "annoyed":
+   gain = rel_once("touch_annoy", -1)
+  elif key != "cold":
+   warm = true
+   gain = rel_once("touch_" + kind, 2 if kind.begins_with("hold") or kind == "tickle" else 1)
+   mood = "مبسوطة" if kind == "tickle" else "مرتاحة"
+ elif npc != "الشبح" and key == "annoyed":
+  var fk := "touch_annoy_%s_%d_%d" % [npc, day, period]
+  if not daily_flags.has(fk):
+   daily_flags[fk] = true
+   character_relations[npc] = clampi(int(character_relations.get(npc, 40)) - 2, 0, 100)
+ speaker.text = npc
+ dialogue.text = line
+ # ليان تغار لو لمست وحدة ثانية قدامها
+ if npc != "ليان" and npc != "الشبح" and sprite_nodes.has("ليان") and kind in ["face", "hand", "hold_hand", "hold_head", "hold_shoulder", "tickle"]:
+  var jl: String = str(TouchData.JEALOUS[randi() % TouchData.JEALOUS.size()])
+  dialogue.text = line + "\n" + jl
+  gain = rel_once("jealous", -2)
+  _touch_fx(sprite_nodes["ليان"], (sprite_nodes["ليان"] as Control).get_global_rect().get_center(), false)
+ if gain > 0: note.text = "%s (+%d علاقة)" % ["لمسة حلوة" if not kind.begins_with("hold") else "حضن", gain]
+ elif gain < 0: note.text = "ليان انزعجت شوي (%d علاقة)" % gain
+ else: note.text = ""
+ _touch_fx(b, gpos, warm)
+ update_status()
+
+func _drag_end(b: Control, npc: String, gpos: Vector2):
+ npc_spot["%s|%s" % [location, npc]] = b.anchor_left
+ var lines: Dictionary = TouchData.lines_for(npc)
+ var arr: Array = lines.get("drag", ["..."])
+ speaker.text = npc
+ dialogue.text = str(arr[randi() % arr.size()])
+ note.text = ""
+ _touch_fx(b, gpos, false)
+
+# نقزة صغيرة للشخصية + دائرة مكان اللمسة + قلوب لو الرد حلو
+func _touch_fx(b: Control, gpos: Vector2, hearts: bool):
+ if fx_level == 0 or not is_instance_valid(b) or not is_instance_valid(fx_layer): return
+ var y0: float = b.position.y
+ var hop := b.create_tween()
+ hop.tween_property(b, "position:y", y0 - 10.0, 0.12).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+ hop.tween_property(b, "position:y", y0, 0.2).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+ var lp: Vector2 = fx_layer.get_global_transform().affine_inverse() * gpos
+ var ring := Panel.new()
+ ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ ring.add_theme_stylebox_override("panel", mk_style(Color(1, 1, 1, 0.0), 40, Color(1, 0.85, 0.9, 0.9), 3))
+ ring.size = Vector2(80, 80)
+ ring.pivot_offset = Vector2(40, 40)
+ ring.position = lp - Vector2(40, 40)
+ ring.scale = Vector2(0.3, 0.3)
+ fx_layer.add_child(ring)
+ var rt := ring.create_tween().set_parallel(true)
+ rt.tween_property(ring, "scale", Vector2(1.2, 1.2), 0.45).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+ rt.tween_property(ring, "modulate:a", 0.0, 0.45)
+ rt.chain().tween_callback(ring.queue_free)
+ if hearts:
+  var top: Vector2 = fx_layer.get_global_transform().affine_inverse() * (b.get_global_rect().position + Vector2(b.get_global_rect().size.x * 0.5, b.get_global_rect().size.y * 0.08))
+  for i in 3:
+   var hrt := Polygon2D.new()
+   var pts := PackedVector2Array()
+   for k in 24:
+    var t := TAU * float(k) / 24.0
+    pts.append(Vector2(16.0 * pow(sin(t), 3), -(13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t))) * 0.9)
+   hrt.polygon = pts
+   hrt.color = Color(1.0, 0.42, 0.6, 0.95)
+   hrt.position = top + Vector2(randf_range(-50.0, 50.0), randf_range(-10.0, 20.0))
+   hrt.scale = Vector2(0.5, 0.5)
+   fx_layer.add_child(hrt)
+   var ht := hrt.create_tween().set_parallel(true)
+   ht.tween_interval(0.12 * i)
+   ht.tween_property(hrt, "position:y", hrt.position.y - 90.0, 1.2).set_delay(0.12 * i).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+   ht.tween_property(hrt, "scale", Vector2(1.0, 1.0), 0.4).set_delay(0.12 * i)
+   ht.tween_property(hrt, "modulate:a", 0.0, 0.5).set_delay(0.8 + 0.12 * i)
+   ht.chain().tween_callback(hrt.queue_free)
 
 func _set_sprite_x(v: float, b, sh):
  if is_instance_valid(b):
@@ -3472,6 +3668,8 @@ func _shower_build_steam():
    var dx := randf_range(20.0, 45.0) * (1.0 if i % 2 == 0 else -1.0)
    tw.tween_property(t, "position", t.position + Vector2(dx, -randf_range(15.0, 35.0)), dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
    tw.tween_property(t, "position", t.position, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+ if _sh.has("frame") and is_instance_valid(_sh["frame"]):
+  _frame_fx(str((_sh["frame"] as Control).get_meta("n", "")))
  if steam_density == 2:
   # أقصى كثافة: بخار كثيف يغطي ليان بالكامل داخل الدش
   for i in 3:
@@ -3575,8 +3773,10 @@ func live_shower(i: int):
     fig.create_tween().tween_method(func(v): gm.set_shader_parameter("strength", v), 0.0, 1.0, 1.2)
     var steam: Control = _sh["steam"]
     steam.create_tween().tween_property(steam, "modulate:a", 1.0, 2.5)
-    _shower_gesture("relax"))
+    _shower_gesture("relax")
+    _shower_frame(str(SHOWER_FRAMES.get("inside", ""))))
   "off":
+   _shower_frame("")
    _shower_water(false)
    _shower_gesture("relax")
    var steam: Control = _sh["steam"]
@@ -3584,6 +3784,7 @@ func live_shower(i: int):
   _:
    _instant_inside()
    _shower_gesture(act)
+   _shower_frame(str(SHOWER_FRAMES.get(act, "")))
  say("ليان", str(st[1]))
  note.text = "استحمام %d/%d" % [i + 1, LIVE_SHOWER.size()]
  if i < LIVE_SHOWER.size() - 1:
@@ -3621,6 +3822,93 @@ func _instant_inside():
  ((_sh["glass"] as ColorRect).material as ShaderMaterial).set_shader_parameter("strength", 1.0)
  (_sh["steam"] as Control).modulate.a = 1.0
  if (_sh["drops"] as Control).get_child_count() == 0: _shower_water(true)
+
+# لقطات مرسومة للدش (البخار يغطي كل شي). إذا الصورة موجودة تظهر فوق المشهد مع بخار وماء متحرك.
+const SHOWER_FRAMES := {"inside": "shower_02", "hair": "shower_01", "rinse": "shower_03", "turn": "shower_02", "relax": "shower_03"}
+# مكان رأس الدش في كل لقطة (نسبة من الشاشة) علشان قطرات الماء المتحركة
+const SHOWER_HEADS := {"shower_01": Vector2(0.165, 0.15), "shower_02": Vector2(0.168, 0.05), "shower_03": Vector2(0.168, 0.05)}
+
+func _shower_frame(fname: String):
+ if not is_instance_valid(scene_layer): return
+ var path := "res://assets/bathing/%s.jpg" % fname
+ var old = _sh.get("frame", null)
+ if old != null and not is_instance_valid(old): old = null
+ if fname != "" and old != null and str(old.get_meta("n", "")) == fname: return
+ if fname == "" or not ResourceLoader.exists(path):
+  if old != null:
+   _sh.erase("frame")
+   var tw: Tween = old.create_tween()
+   tw.tween_property(old, "modulate:a", 0.0, 0.7 if fx_level > 0 else 0.01)
+   tw.tween_callback(old.queue_free)
+  _frame_fx("")
+  return
+ var fr := TextureRect.new()
+ fr.name = "Frame"
+ fr.texture = load(path)
+ fr.set_meta("n", fname)
+ fr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+ fr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+ fr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ fr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ fr.pivot_offset = Vector2(640, 360)
+ fr.modulate.a = 0.0
+ scene_layer.add_child(fr)
+ _sh["frame"] = fr
+ var tin := fr.create_tween()
+ tin.tween_property(fr, "modulate:a", 1.0, 0.6 if fx_level > 0 else 0.01)
+ if old != null:
+  tin.tween_callback(old.queue_free)
+ if fx_level > 0:
+  # تقريب بطيء جدًا يعطي إحساس كاميرا حية
+  var kb := fr.create_tween().set_loops()
+  kb.tween_property(fr, "scale", Vector2(1.035, 1.035), 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+  kb.tween_property(fr, "scale", Vector2.ONE, 7.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+ _frame_fx(fname)
+
+# بخار وماء متحرك فوق اللقطة المرسومة
+func _frame_fx(fname: String):
+ var old = _sh.get("ffx", null)
+ if old != null and is_instance_valid(old):
+  scene_layer.remove_child(old)
+  old.queue_free()
+ _sh.erase("ffx")
+ if fname == "" or fx_level == 0: return
+ var box := Control.new()
+ box.name = "FrameFX"
+ box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ scene_layer.add_child(box)
+ _sh["ffx"] = box
+ var head: Vector2 = SHOWER_HEADS.get(fname, Vector2(0.17, 0.08)) * Vector2(1280, 720)
+ var nd := 22 if fx_level == 2 else 10
+ for i in nd:
+  var d := ColorRect.new()
+  d.color = Color(0.9, 0.95, 1.0, randf_range(0.18, 0.4))
+  d.size = Vector2(2, randf_range(12.0, 24.0))
+  d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+  d.position = head + Vector2(randf_range(-70, 70), 0)
+  box.add_child(d)
+  var tw := d.create_tween().set_loops()
+  tw.tween_interval(randf_range(0.0, 0.7))
+  tw.tween_property(d, "position:y", head.y + randf_range(230.0, 330.0), randf_range(0.5, 0.75)).from(head.y + 10.0)
+  tw.parallel().tween_property(d, "modulate:a", 0.0, 0.7).from(1.0)
+ var a: float = [0.22, 0.38, 0.6][steam_density]
+ var n: int = [4, 6, 9][steam_density]
+ for i in n:
+  var t := TextureRect.new()
+  t.texture = fog_texture()
+  t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+  t.stretch_mode = TextureRect.STRETCH_SCALE
+  t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+  var sz := randf_range(260.0, 420.0)
+  t.size = Vector2(sz, sz * 0.8)
+  t.position = Vector2(randf_range(-80.0, 420.0), randf_range(330.0, 600.0))
+  t.modulate = Color(1.0, 0.94, 0.92, a * randf_range(0.6, 1.0))
+  box.add_child(t)
+  var tw := t.create_tween().set_loops()
+  var dur := randf_range(5.0, 8.0)
+  tw.tween_property(t, "position", t.position + Vector2(randf_range(-40, 40), -randf_range(40.0, 90.0)), dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+  tw.tween_property(t, "position", t.position, dur).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func live_shower_end():
  shower_clear()
