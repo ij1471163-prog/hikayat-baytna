@@ -1741,6 +1741,11 @@ func is_weekend() -> bool:
 
 func npc_sched(npc: String) -> Array:
  if npc == "ليان" and preg_stage == 3: return ["غرفة النوم", "الصالة", "الصالة", "غرفة النوم"]
+ # أيام الشغل: الظهر ليان تغسل الملابس أو تنظف الحمام (لما تكون على راحتها)
+ if npc == "ليان" and idle_on and preg_stage < 2 and not is_weekend() and day % 3 != 0:
+  var sc: Array = (WorldData.NPCS[npc]["sched"] as Array).duplicate()
+  sc[1] = "غرفة الغسيل" if day % 3 == 1 else "الحمام"
+  return sc
  var d: Dictionary = WorldData.NPCS[npc]
  if is_weekend() and d.has("weekend"): return d["weekend"]
  return d["sched"]
@@ -1778,7 +1783,15 @@ func idle_pose(npc: String) -> Dictionary:
  var rng := RandomNumberGenerator.new()
  rng.seed = hash("%d_%d_%d_%s_%s" % [day, period, _pose_seed, loc, npc])
  rng.randi()
- var pick: Dictionary = cands[rng.randi_range(0, cands.size() - 1)]
+ var total := 0.0
+ for c in cands: total += float(c.get("w", 1.0))
+ var r := rng.randf() * total
+ var pick: Dictionary = cands[cands.size() - 1]
+ for c in cands:
+  r -= float(c.get("w", 1.0))
+  if r <= 0.0:
+   pick = c
+   break
  _idle_meta["res://assets/sprites/idle/%s.png" % pick["id"]] = pick
  return pick
 
@@ -1875,6 +1888,10 @@ func refresh_cards():
    h = minf(vh * float(sr[3]) * 0.86, vw * float(sr[2]) * 0.94 * float(tex.get_height()) / float(tex.get_width()))
    lift = vh * (1.0 - float(sr[1]) - float(sr[3])) + vh * 0.04
   var w: float = h * float(tex.get_width()) / float(tex.get_height())
+  if not is_steam and not in_shower:
+   # الشخصية كاملة داخل الشاشة (الوضعيات العريضة ما تنقص من الطرف)
+   var hw: float = (w * 0.5) / vw + 0.01
+   cs[i] = clampf(float(cs[i]), minf(hw, 0.5), maxf(1.0 - hw, 0.5))
   var sh_node: Control = null
   if full_body:
    var sh := TextureRect.new()
