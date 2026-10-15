@@ -51,6 +51,7 @@ const TalkData = preload("res://talk_data.gd")
 const FamilyData = preload("res://family_data.gd")
 const ScenesData = preload("res://scenes_data.gd")
 const TouchData = preload("res://touch_data.gd")
+const PoseData = preload("res://pose_data.gd")
 # نقاط التفاعل داخل الغرف
 var hotspot_layer: Control
 var exits_box: HFlowContainer
@@ -721,6 +722,7 @@ func fade_in():
  tw.tween_property(fade_rect, "modulate:a", 0.0, 0.32)
 
 func go(place):
+ if str(place) != location: _pose_seed += 1
  fade_in()
  explore_mode = true
  pose_override = ""
@@ -958,6 +960,10 @@ var _taps: Array = []
 var _touch_pk := ""
 var _touch_n := {}
 var npc_spot := {}
+# وضعيات حية داخل البيت (تنطفي لما تختار لليان لبس من الخزانة)
+var idle_on := true
+var _pose_seed := 0
+var _idle_meta := {}
 var current_cg_path := ""
 var _shadow_tex: Texture2D = null
 func shadow_texture() -> Texture2D:
@@ -1353,6 +1359,11 @@ func hug():
 
 func wardrobe():
  say("خزانة ليان", "الزي الحالي: %s. اختر زيًا تملكه." % outfit)
+ if not idle_on:
+  choice("خلّها على راحتها (تتغير وضعيتها ولبسها حسب الغرفة)", func():
+   idle_on = true
+   note.text = "ليان بتلبس وتقعد على راحتها في كل غرفة."
+   go("المنزل"))
  for item in owned_outfits:
   choice("ارتداء: " + item, func(): wear(item))
  choice("اذهب لمتجر الملابس", func(): go("متجر الملابس"))
@@ -1360,6 +1371,7 @@ func wardrobe():
 
 func wear(item):
  outfit = item
+ idle_on = false
  if is_instance_valid(note): note.text = "ليان ارتدت %s، وبيظهر عليها في كل غرف البيت." % item
  clear_cg()
  pose_override = ""
@@ -1750,7 +1762,31 @@ func npc_texture(npc: String):
  clear_cg()
  refresh_cards()
 
+# الوضعية الحية المناسبة للغرفة الحالية (فاضي = الصورة العادية)
+func idle_pose(npc: String) -> Dictionary:
+ if npc == "ليان" and (not idle_on or pose_override != "" or outfit_view): return {}
+ if npc == "ليان" and preg_stage >= 3 and not baby_born: return {}   # آخر الحمل تظهر بفستان الحمل
+ if not (sprite_focus.is_empty() or sprite_focus == [npc]): return {}
+ var loc := location
+ if loc == "المنزل": loc = "الصالة"
+ if not (loc in WorldData.HOUSE_PLACES): return {}
+ var lst: Array = PoseData.LAYAN if npc == "ليان" else (PoseData.NORA if npc == "نورة" else [])
+ var cands: Array = []
+ for p in lst:
+  if loc in (p["rooms"] as Array) and ResourceLoader.exists("res://assets/sprites/idle/%s.png" % p["id"]): cands.append(p)
+ if cands.is_empty(): return {}
+ var rng := RandomNumberGenerator.new()
+ rng.seed = hash("%d_%d_%d_%s_%s" % [day, period, _pose_seed, loc, npc])
+ rng.randi()
+ var pick: Dictionary = cands[rng.randi_range(0, cands.size() - 1)]
+ _idle_meta["res://assets/sprites/idle/%s.png" % pick["id"]] = pick
+ return pick
+
 func sprite_path_for(npc: String) -> String:
+ if npc == "نورة" and sprite_focus == ["نورة"] and ResourceLoader.exists(str(PoseData.PORTRAIT["نورة"])):
+  return str(PoseData.PORTRAIT["نورة"])
+ var ip := idle_pose(npc)
+ if not ip.is_empty(): return "res://assets/sprites/idle/%s.png" % ip["id"]
  if npc == "ليان": return layan_sprite_path()
  if npc == "نورة":
   var nn: String = str(NORA_POSES.get(location, "maid"))
@@ -1818,6 +1854,18 @@ func refresh_cards():
   if full_body:
    lift = vh * 0.175
    if not ("/exercise/" in path): h = minf(h * 0.775, vh * 0.72)
+  var post := ""
+  if "/idle/" in path and not half_body:
+   post = str(_idle_meta.get(path, {}).get("post", "stand"))
+   var base := vh * 0.72
+   if post == "sit": h = base * 0.6
+   elif post == "chair": h = base * 0.74
+   elif post == "lie": h = base * 0.55
+   elif post == "standcut":
+    h = base * 0.95
+    lift = 0.0
+   elif post.begins_with("floor:"): h = base * float(post.get_slice(":", 1)) * float(tex.get_height()) / float(tex.get_width())
+   else: h = base
   var in_shower: bool = is_steam and location == "الحمام" and not cg_frame.visible
   if is_steam:
    h = minf(vh * 0.98, vw * 0.92 * float(tex.get_height()) / float(tex.get_width()))
@@ -1865,7 +1913,8 @@ func refresh_cards():
   if explore_mode and sprite_focus.is_empty():
    b.mouse_entered.connect(func(): b.modulate = Color(1.18, 1.14, 1.08))
    b.mouse_exited.connect(func(): b.modulate = Color.WHITE)
-   b.set_meta("simple", "/poses/" in path or "/nora_poses/" in path or "/exercise/" in path or half_body or is_steam)
+   b.set_meta("post", post if post != "" else "stand")
+   b.set_meta("simple", (post != "" and not post.begins_with("stand")) or "/poses/" in path or "/nora_poses/" in path or "/exercise/" in path or half_body or is_steam)
    b.gui_input.connect(func(ev): _sprite_input(ev, b, npc))
   else:
    b.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1919,6 +1968,10 @@ func cycle_fx_level():
 func motion_profile(npc: String, path: String) -> Dictionary:
  # amp: تمدد التنفس (x,y) ، per: مدة الدورة، sway: ميل بالدرجات ، sper: مدة التمايل ، pulse: نبض الشفافية
  var file := path.get_file().get_basename()
+ if "/idle/" in path:
+  var ps := str(_idle_meta.get(path, {}).get("post", "stand"))
+  if ps.begins_with("stand"): return {"ax": 0.004, "ay": 0.010, "per": 3.9, "sway": 0.5, "sper": 4.6, "pulse": 0.0}
+  return {"ax": 0.004, "ay": 0.009, "per": 4.6, "sway": 0.0, "sper": 1.0, "pulse": 0.0}
  if npc == "الشبح": return {"ax": 0.010, "ay": 0.020, "per": 4.4, "sway": 1.0, "sper": 5.8, "pulse": 0.10}
  if "/steam/" in path: return {"ax": 0.018, "ay": 0.018, "per": 7.0, "sway": 0.0, "sper": 1.0, "pulse": 0.0}
  if "/exercise/" in path: return {"ax": 0.005, "ay": 0.012, "per": 3.8, "sway": 0.0, "sper": 1.0, "pulse": 0.0}
@@ -2628,9 +2681,10 @@ func load_game():
  baby_gender = str(parsed.get("baby_gender", baby_gender))
  baby_born = int(parsed.get("baby_born", baby_born))
  pre_preg_outfit = str(parsed.get("pre_preg_outfit", pre_preg_outfit))
+ idle_on = bool(parsed.get("idle_on", true))
 
 func save_game():
- var data = {"day":day,"period":period,"money":money,"relationship":relationship,"mood":mood,"outfit":outfit,"owned_outfits":owned_outfits,"laundry":laundry,"energy":energy,"location":location,"character_relations":character_relations,"daily_flags":daily_flags,"layan_hunger":layan_hunger,"layan_thirst":layan_thirst,"layan_tiredness":layan_tiredness,"layan_activity":layan_activity,"house_cleanliness":house_cleanliness,"meals_prepared":meals_prepared,"shower_count":shower_count,"schedule_note":schedule_note,"story_seen":story_seen,"weeks_done":weeks_done,"weeks_checked":weeks_checked,"goal_start_day":goal_start_day,"events_done":events_done,"story_ended":story_ended,"inventory":inventory,"quest_state":quest_state,"quest_day":quest_day,"quest_meta":quest_meta,"qflags":qflags,"skill_pts":skill_pts,"talks_seen":talks_seen,"preg_stage":preg_stage,"preg_start":preg_start,"preg_flags":preg_flags,"craving":craving,"craving_bought":craving_bought,"nursery":nursery,"baby_name":baby_name,"baby_gender":baby_gender,"baby_born":baby_born,"pre_preg_outfit":pre_preg_outfit}
+ var data = {"day":day,"period":period,"money":money,"relationship":relationship,"mood":mood,"outfit":outfit,"owned_outfits":owned_outfits,"laundry":laundry,"energy":energy,"location":location,"character_relations":character_relations,"daily_flags":daily_flags,"layan_hunger":layan_hunger,"layan_thirst":layan_thirst,"layan_tiredness":layan_tiredness,"layan_activity":layan_activity,"house_cleanliness":house_cleanliness,"meals_prepared":meals_prepared,"shower_count":shower_count,"schedule_note":schedule_note,"story_seen":story_seen,"weeks_done":weeks_done,"weeks_checked":weeks_checked,"goal_start_day":goal_start_day,"events_done":events_done,"story_ended":story_ended,"inventory":inventory,"quest_state":quest_state,"quest_day":quest_day,"quest_meta":quest_meta,"qflags":qflags,"skill_pts":skill_pts,"talks_seen":talks_seen,"preg_stage":preg_stage,"preg_start":preg_start,"preg_flags":preg_flags,"craving":craving,"craving_bought":craving_bought,"nursery":nursery,"baby_name":baby_name,"baby_gender":baby_gender,"baby_born":baby_born,"pre_preg_outfit":pre_preg_outfit,"idle_on":idle_on}
  var file = FileAccess.open("user://savegame.json", FileAccess.WRITE)
  if file:
   file.store_string(JSON.stringify(data))
@@ -2775,8 +2829,9 @@ func room_intro():
  var rd: Dictionary = RoomsData.ROOMS[location]
  if sprite_nodes.has("ليان"):
   if is_instance_valid(note) and note.text.begins_with("ليان مو هنا"): note.text = ""
+  var lip := idle_pose("ليان")
   if not ("جائعة" in layan_activity or "تحتاج" in layan_activity):
-   layan_activity = "معك في " + location
+   layan_activity = str(lip["label"]) if not lip.is_empty() else "معك في " + location
    update_status()
   var g: Array = TalkData.GREET.get(period, TalkData.GREET[0])
   speaker.text = "ليان"
@@ -2979,7 +3034,7 @@ func _set_sprite_x(v: float, b, sh):
 # ليان تمشي نحو الغرض (حركة أفقية ناعمة مع تمايل بسيط)، ثم ينفذ التفاعل
 func walk_layan(cx: float, cb: Callable):
  var b: Control = sprite_nodes.get("ليان", null)
- if b == null or fx_level == 0 or not is_instance_valid(b):
+ if b == null or fx_level == 0 or not is_instance_valid(b) or not str(b.get_meta("post", "stand")).begins_with("stand"):
   cb.call()
   return
  var sh = b.get_meta("shadow") if b.has_meta("shadow") else null
