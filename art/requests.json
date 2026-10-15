@@ -1,0 +1,45 @@
+{
+ "model": "klein-4b",
+ "run": [],
+ "refs": {
+  "layan": "assets/sprites/layan/03_casual_tshirt_jeans.png",
+  "house": "assets/backgrounds/living_room.jpg"
+ },
+ "style": {
+  "bg": "Match the art style, colors and warm lighting of image 0. Stylized 3D animated-film look, cozy, rich detail, wide shot, eye level, no people, no text, no watermark.",
+  "scene": "Stylized 3D animated-film look, warm cinematic lighting, wide 16:9 shot, no text, no watermark.",
+  "char": "Full body from head to feet, standing, front view, centered, arms relaxed, plain light gray studio background, soft even lighting, stylized 3D animated-film character, no text, no watermark."
+ },
+ "jobs": [
+  {"name": "cafe", "target": "assets/backgrounds/cafe.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "Interior of a cozy modern coffee shop: wooden tables and chairs, warm pendant lights, plants on shelves, espresso counter with pastry display in the back, big windows with evening city lights."},
+  {"name": "clothes_shop", "target": "assets/backgrounds/clothes_shop.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "Interior of a bright modern women's clothing boutique: clothing racks with colorful dresses and sweaters, shelves with folded clothes and bags, a mirror and a fitting-room curtain, cashier counter."},
+  {"name": "gym", "target": "assets/backgrounds/gym.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "Interior of a clean modern gym: treadmills by large windows, dumbbell rack, yoga mats, mirrors on the wall, plants, daylight."},
+  {"name": "city", "target": "assets/backgrounds/city.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "A pleasant city street in the evening: shops with glowing signs without readable text, palm trees, wide sidewalk, cars parked, warm sunset sky."},
+  {"name": "hallway", "target": "assets/backgrounds/hallway.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "Upstairs hallway of the same family house: a corridor with several closed wooden bedroom doors on both sides, framed family photos, a runner rug, soft wall lamps."},
+  {"name": "storage", "target": "assets/backgrounds/storage.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "A small storage room in the same house: shelves with labeled boxes without readable text, a folded ladder, old suitcases, a vacuum cleaner, one small window."},
+  {"name": "nursery", "target": "assets/backgrounds/nursery.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "A sweet baby nursery room in the same house: white wooden crib with a mobile, soft pastel walls, rocking chair, changing table, teddy bears and toys on shelves, warm night light."},
+  {"name": "hospital", "target": "assets/backgrounds/hospital.jpg", "kind": "bg", "refs": ["house"],
+   "prompt": "A calm private hospital maternity room: a hospital bed with white sheets, a small baby bassinet beside it, flowers and balloons, a window with soft daylight, a comfortable chair for the husband."},
+  {"name": "13_pink_hearts_pajamas", "target": "assets/sprites/layan/13_pink_hearts_pajamas.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She now wears loose long-sleeve pink pajamas with a small heart pattern, long pajama pants and fluffy slippers."},
+  {"name": "14_beige_sweater_dress", "target": "assets/sprites/layan/14_beige_sweater_dress.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She now wears a long-sleeve beige knit sweater dress reaching below the knees, with ankle boots."},
+  {"name": "15_blue_maternity_dress", "target": "assets/sprites/layan/15_blue_maternity_dress.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She is pregnant with a visible round belly and wears a long flowing light-blue maternity dress with short sleeves and flat sandals, one hand resting on her belly, happy smile."},
+  {"name": "16_teddy_pajamas", "target": "assets/sprites/layan/16_teddy_pajamas.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She now wears cozy cream pajamas with a small teddy bear pattern, long sleeves and long pants, and bear slippers."},
+  {"name": "17_gray_lounge_set", "target": "assets/sprites/layan/17_gray_lounge_set.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She now wears a soft gray hoodie and matching gray jogger pants with white sneakers."},
+  {"name": "18_teddy_tshirt", "target": "assets/sprites/layan/18_teddy_tshirt.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She now wears an oversized white t-shirt with a cute teddy bear print and light blue wide-leg jeans with white sneakers."},
+  {"name": "19_yellow_floral_dress", "target": "assets/sprites/layan/19_yellow_floral_dress.png", "kind": "char", "refs": ["layan"],
+   "prompt": "The same young woman as in image 0: same face, same big brown eyes, same brown hair in a messy high bun with a pink scrunchie, same art style and proportions. She now wears a long yellow floral summer dress with short puff sleeves reaching her ankles, and white sandals."}
+ ]
+}

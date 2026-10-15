@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - "incoming/**"
       - "tools/**"
+      - "art/**"
+      - ".github/workflows/ai-images.yml"
       - ".github/workflows/images.yml"
 
 jobs:

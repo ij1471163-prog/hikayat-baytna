@@ -1,0 +1,81 @@
+name: AI Images (Cloudflare)
+# يرسم الصور المطلوبة في art/requests.json (القائمة "run") عن طريق Cloudflare Workers AI المجاني،
+# يركّبها في فرع مراجعة ويبني APK تجريبي. ما يلمس main مباشرة.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "art/requests.json"
+  workflow_dispatch:
+    inputs:
+      only:
+        description: "أسماء الصور مفصولة بفاصلة (فاضي = قائمة run في الملف)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: ai-images
+  cancel-in-progress: false
+
+jobs:
+  draw:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: images/ai-${{ github.run_id }}
+      CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+      CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+      ONLY: ${{ github.event.inputs.only }}
+    steps:
+      - name: Check secrets
+        run: |
+          if [ -z "$CF_ACCOUNT_ID" ] || [ -z "$CF_API_TOKEN" ]; then
+            echo "::error title=secrets::ناقص CF_ACCOUNT_ID أو CF_API_TOKEN في Settings > Secrets and variables > Actions"
+            exit 1
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache background-removal model
+        uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-isnet-general-use-v1
+      - name: Install
+        run: pip install --quiet pillow numpy requests "rembg[cpu]"
+
+      - name: Draw images
+        run: |
+          python tools/images/cf_generate.py > gen.log 2>&1; rc=$?
+          cat gen.log
+          grep -E "^::" gen.log || true
+          [ -f art/out/REPORT-AR.md ] && cat art/out/REPORT-AR.md >> "$GITHUB_STEP_SUMMARY"
+          if [ $rc -ne 0 ]; then
+            tail -c 1500 gen.log | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"}{print}' > ann.txt
+            echo "::error title=gen::$(cat ann.txt)"; exit $rc
+          fi
+
+      - name: Validate images and paths
+        run: python tools/images/check_assets.py
+
+      - name: Push review branch
+        if: env.DONE != '0' && env.DONE != ''
+        run: |
+          [ -d "image_backups" ] && touch image_backups/.gdignore
+          git config user.name "images-bot"
+          git config user.email "images-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -A assets art/out image_backups
+          git commit -q -m "AI images (run ${{ github.run_id }})"
+          git push -q origin "$BRANCH"
+          echo "::notice title=review-branch::$BRANCH"
+          echo "فرع المراجعة: $BRANCH" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build test APK from the review branch
+        if: env.DONE != '0' && env.DONE != ''
+        run: gh workflow run build-android.yml --ref "$BRANCH" && echo "::notice title=apk::بدأ بناء APK تجريبي من $BRANCH"
