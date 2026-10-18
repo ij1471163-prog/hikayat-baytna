@@ -62,6 +62,11 @@ func _draw() -> void:
 		"غرفة الاسترخاء":
 			draw_rect(Rect2(160, 360, 400, 100), Color("#9d817c"))
 			draw_circle(Vector2(560, 315), 22, Color("#f2cf91"))
+		"الممر":
+			draw_rect(Rect2(120, 285, 105, 185), Color("#b78e6c"))
+			draw_rect(Rect2(135, 300, 75, 155), Color("#e7d3bb"))
+			draw_rect(Rect2(470, 330, 95, 140), Color("#a88c72"))
+			draw_rect(Rect2(485, 345, 65, 110), Color("#e7d3bb"))
 	# door on right, room label
 	draw_rect(Rect2(640, 270, 60, 200), Color("#8b6045"))
 	draw_circle(Vector2(688, 370), 4, Color("#f0d58b"))
