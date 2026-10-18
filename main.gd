@@ -3146,7 +3146,12 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
    _tch = {"b": b, "npc": npc, "start": mb.global_position, "t": Time.get_ticks_msec(), "local": mb.position, "drag": false, "x0": b.anchor_left, "y0": float(dp.get("y", 0.0))}
    if b.has_meta("live") and touch_enabled():
     var lb0 = b.get_meta("live")
-    lb0.press(mb.position / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) * lb0.size)
+    var lpx: Vector2 = mb.position / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) * lb0.size
+    lb0.press(lpx)
+    # ردة الفعل تبدأ أول ما يلمسها الإصبع (مو بعد ما ترفعه)
+    var fr0 := fig_rect(b)
+    var z0 := touch_zone((mb.position / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) - fr0.position) / fr0.size, bool(b.get_meta("simple", false)))
+    lb0.react(z0, z0, lpx)
   elif _tch.get("b", null) == b:
    var st: Dictionary = _tch
    _tch = {}
@@ -3167,7 +3172,7 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
   b.accept_event()
  elif ev is InputEventMouseMotion and _tch.get("b", null) == b:
   var d: Vector2 = (ev as InputEventMouseMotion).global_position - (_tch["start"] as Vector2)
-  if not bool(_tch["drag"]) and d.length() > 18.0 and touch_enabled():
+  if not bool(_tch["drag"]) and d.length() > (45.0 if b.has_meta("live") else 18.0) and touch_enabled():
    _tch["drag"] = true
    if b.has_meta("live"): b.get_meta("live").release()
   if not bool(_tch["drag"]) and b.has_meta("live"):
@@ -3303,7 +3308,7 @@ func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector
  if gain > 0: note.text = "%s (+%d علاقة)" % ["لمسة حلوة" if not kind.begins_with("hold") else "حضن", gain]
  elif gain < 0: note.text = "ليان انزعجت شوي (%d علاقة)" % gain
  else: note.text = ""
- if b.has_meta("live"):
+ if b.has_meta("live") and (key in ["annoyed", "cold"] or kind == "tickle"):
   var lbr = b.get_meta("live")
   var lp: Vector2 = b.get_global_transform().affine_inverse() * gpos
   lbr.react(zone, key if key in ["annoyed", "cold"] else kind, lp / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) * lbr.size)

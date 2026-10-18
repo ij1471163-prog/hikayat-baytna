@@ -148,9 +148,6 @@ func react(zone: String, kind: String, pt: Vector2):
 			_tickle = 1.3
 			_pose(0.0, 0.0, 1.0, 1.0, 0.8, 1.3)
 			return
-	if kind.begins_with("hold"):
-		_pose(-0.04 * side, -0.12 * side, 0.3, 0.3, 0.0, 1.4)
-		return
 	match zone:
 		"head": _pose(-0.015 * side, -0.16 * side, 0.2, 0.2, 0.0, 1.1)
 		"face": _pose(0.02 * side, 0.10 * side, 0.0, 0.0, 0.0, 0.9)

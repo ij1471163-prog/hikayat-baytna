@@ -106,7 +106,10 @@ func target(n: String, v: float): sp[n]["to"] = v
 func val(n: String) -> float: return sp[n]["x"]
 
 # ===== اللمس =====
+var _press_t := 0.0
+var _late_release := -1.0
 func press(pt: Vector2):
+	_press_t = t; _late_release = -1.0
 	press_c = pt; press_to = 1.0; press_rate = 7.0; finger_on = true; drag = Vector2.ZERO
 	PR = _radius(pt)
 
@@ -116,6 +119,9 @@ func press_move(pt: Vector2, dt: float):
 	press_c = pt
 
 func release():
+	if t - _press_t < 0.45:
+		_late_release = _press_t + 0.45
+		return
 	press_to = 0.0; press_rate = 2.4; finger_on = false
 
 func _radius(pt: Vector2) -> float:
@@ -134,8 +140,8 @@ func react(zone: String, kind: String, pt: Vector2):
 			_r(1.8 * s, 7.0 * s, 0.9 * s, -0.2, 0, 0, 0, -1, 30); return
 		"tickle":
 			_r(0, 0, 0, 1.2, -10, -10, 1.0, 0.55, 45); tickle_until = t + 1.3; calm_at = t + 1.9; return
-	if kind.begins_with("hold"):
-		_r(-1.6 * s, -9.0 * s, -0.6 * s, 1.0, -3, -3, 0, 0.8, 15); calm_at = t + 2.0; return
+	# الضغطة الطويلة: نفس ردة فعل المكان (مثل المقطع) بس تطول أكثر
+	var held := kind.begins_with("hold")
 	match zone:
 		"head": _r(-1.0 * s, -10.0 * s, 0, 1.0, -4 if s < 0 else 0, 0 if s < 0 else -4, 0, 1.0, 15)
 		"face": _r(0.8 * s, 6.0 * s, 0.5 * s, 1.0, 0, 0, 0, 0.4, 30)
@@ -157,6 +163,7 @@ func react(zone: String, kind: String, pt: Vector2):
 		"feet":
 			_r(0, 0, 0, 1.2, -8, -8, 0, 0.55, 40); tickle_until = t + 1.4; calm_at = t + 2.0
 		_: _r(0.8 * s, 4.0 * s, 0.3 * s, 0.7, 0, 0, 0, -1, 25)
+	if held: calm_at = maxf(calm_at, t + 2.0)
 
 func _r(sw: float, hd: float, tn: float, sm: float, sl: float, sr: float, su: float, bl: float, bob: float):
 	extra_sway = sw; extra_head = hd
@@ -229,6 +236,9 @@ func face_d(p: Vector2) -> Vector2:
 func _process(delta: float):
 	if parts.is_empty(): return
 	t += delta
+	if _late_release > 0.0 and t >= _late_release:
+		_late_release = -1.0
+		press_to = 0.0; press_rate = 2.4; finger_on = false
 	if calm_at > 0.0 and t >= calm_at:
 		calm_at = -1.0
 		calm()
