@@ -7,6 +7,8 @@ var money := 600
 var relationship := 50
 var mood := "هادئة"
 var outfit := "بيجامة وردية"
+const LiveBody := preload("res://live_body.gd")
+var live_on := true
 var owned_outfits := ["بيجامة وردية", "بيجامة بيضاء", "كاجوال تيشيرت وجينز", "بلوزة وردية وبنطال"]
 var outfit_textures := {
  "بيجامة وردية": "res://assets/layan_outfits/01_pink_home_pajamas.png",
@@ -2050,6 +2052,16 @@ func refresh_cards():
    var lc := bg_light(float(cs[i]), 1.0 - (lift + h * 0.5) / vh, (w / vw) * 0.6, (h / vh) * 0.8)
    tint = Color(tint.r * lc.r, tint.g * lc.g, tint.b * lc.b)
   b.self_modulate = Color(tint.r, tint.g, tint.b, 0.82 if npc == "الشبح" else 1.0)
+  # جسم حي: الصورة نفسها تتنفس وتتحرك، والجلد ينضغط تحت الإصبع
+  if live_on and fx_level > 0 and explore_mode and full_body and not is_steam and not in_shower and npc != "الشبح":
+   var lb = LiveBody.new()
+   lb.setup(tex, path)
+   lb.scale = Vector2(w / float(tex.get_width()), h / float(tex.get_height()))
+   lb.modulate = Color(tint.r, tint.g, tint.b, 1.0)
+   b.self_modulate = Color(1, 1, 1, 0)
+   b.add_child(lb)
+   b.move_child(lb, 0)
+   b.set_meta("live", lb)
   sprites_layer.add_child(b)
   sprite_nodes[npc] = b
   animate_sprite(b, npc, path, w, h)
@@ -2126,15 +2138,17 @@ func animate_sprite(b: Control, npc: String, path: String, w: float, h: float):
  var tin := b.create_tween().set_parallel(true)
  tin.tween_property(b, "modulate:a", 1.0, 0.4)
  tin.tween_property(b, "scale", Vector2.ONE, 0.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+ var live: bool = b.has_meta("live")
  # تنفس
  var tb := b.create_tween().set_loops()
  tb.tween_interval(0.4 + phase)
+ if live: tb.tween_interval(60.0)
  var per: float = p["per"]
  tb.tween_property(b, "scale", Vector2(1.0 + p["ax"] * k, 1.0 + p["ay"] * k), per * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
  tb.tween_property(b, "scale", Vector2.ONE, per * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
  tws.append(tb)
  # تمايل خفيف (فقط في الوضع الكامل)
- if fx_level == 2 and float(p["sway"]) > 0.0:
+ if fx_level == 2 and float(p["sway"]) > 0.0 and not live:
   var ts := b.create_tween().set_loops()
   ts.tween_interval(0.4 + phase)
   var sp: float = p["sper"]
@@ -3077,10 +3091,14 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
    if _walking: return
    var dp: Dictionary = b.get_meta("depth", {})
    _tch = {"b": b, "npc": npc, "start": mb.global_position, "t": Time.get_ticks_msec(), "local": mb.position, "drag": false, "x0": b.anchor_left, "y0": float(dp.get("y", 0.0))}
+   if b.has_meta("live") and touch_enabled():
+    var lb0 = b.get_meta("live")
+    lb0.press(mb.position / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) * lb0.size)
   elif _tch.get("b", null) == b:
    var st: Dictionary = _tch
    _tch = {}
    b.rotation_degrees = 0.0
+   if b.has_meta("live"): b.get_meta("live").release()
    if bool(st["drag"]):
     _drag_end(b, npc, mb.global_position)
    else:
@@ -3098,6 +3116,10 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
   var d: Vector2 = (ev as InputEventMouseMotion).global_position - (_tch["start"] as Vector2)
   if not bool(_tch["drag"]) and d.length() > 18.0 and touch_enabled():
    _tch["drag"] = true
+   if b.has_meta("live"): b.get_meta("live").release()
+  if not bool(_tch["drag"]) and b.has_meta("live"):
+   var lbm = b.get_meta("live")
+   lbm.press_move((ev as InputEventMouseMotion).position / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) * lbm.size, get_process_delta_time())
   if bool(_tch["drag"]):
    var vw: float = get_viewport_rect().size.x
    var nx := clampf(float(_tch["x0"]) + d.x / vw, 0.08, 0.92)
@@ -3204,10 +3226,15 @@ func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector
   var jl: String = str(TouchData.JEALOUS[randi() % TouchData.JEALOUS.size()])
   dialogue.text = line + "\n" + jl
   gain = rel_once("jealous", -2)
+  if (sprite_nodes["ليان"] as Control).has_meta("live"): (sprite_nodes["ليان"] as Control).get_meta("live").react("waist", "annoyed", Vector2.ZERO)
   _touch_fx(sprite_nodes["ليان"], (sprite_nodes["ليان"] as Control).get_global_rect().get_center(), false)
  if gain > 0: note.text = "%s (+%d علاقة)" % ["لمسة حلوة" if not kind.begins_with("hold") else "حضن", gain]
  elif gain < 0: note.text = "ليان انزعجت شوي (%d علاقة)" % gain
  else: note.text = ""
+ if b.has_meta("live"):
+  var lbr = b.get_meta("live")
+  var lp: Vector2 = b.get_global_transform().affine_inverse() * gpos
+  lbr.react(zone, key if key in ["annoyed", "cold"] else kind, lp / Vector2(maxf(b.size.x, 1.0), maxf(b.size.y, 1.0)) * lbr.size)
  _touch_fx(b, gpos, warm, kind)
  bubble(b, line)
  _last_input = Time.get_ticks_msec()
@@ -3373,7 +3400,12 @@ func _touch_fx(b: Control, gpos: Vector2, hearts: bool, kind: String = ""):
  var x0: float = b.position.x
  var side: float = -1.0 if gpos.x < b.get_global_rect().get_center().x else 1.0
  var mv := b.create_tween()
- if kind in ["head", "face"]:
+ if b.has_meta("live"):
+  mv.kill()
+  mv = null
+ if mv == null:
+  pass
+ elif kind in ["head", "face"]:
   # تميل براسها ناحية يدك
   mv.tween_property(b, "rotation_degrees", 4.0 * side, 0.18).set_trans(Tween.TRANS_SINE)
   mv.parallel().tween_property(b, "position:y", y0 - 4.0, 0.18)
