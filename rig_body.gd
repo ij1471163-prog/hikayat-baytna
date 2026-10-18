@@ -17,6 +17,10 @@ var belly_y := 0.0
 var face_c := Vector2.ZERO
 var face_r := 0.0
 var parts := []
+var mats := []
+var sk: Skeleton2D
+var bone_nodes := {}
+var bone_path := {}
 var sp := {}
 var t := 0.0
 var phase := 0.0
@@ -35,7 +39,6 @@ var press_to := 0.0
 var press_rate := 6.0
 var drag := Vector2.ZERO
 var finger_on := false
-var _acc := 0.0
 var _press_t := 0.0
 var _late_release := -1.0
 
@@ -43,14 +46,59 @@ static func key_for(path: String) -> String:
 	return path.trim_prefix("res://assets/sprites/").replace("/", "__").trim_suffix(".png")
 
 static func has_rig(path: String) -> bool:
-	return FileAccess.file_exists(DIR + key_for(path) + ".json")
+	return FileAccess.file_exists(DIR + key_for(path) + ".rig")
+
+# ملف الهيكل: مضغوط (gzip) = طول الرأس + رأس JSON + لكل جزء: نقاط uint16 ومثلثات uint16 وأوزان uint8
+static func load_rig(key: String) -> Dictionary:
+	var raw := FileAccess.get_file_as_bytes(DIR + key + ".rig")
+	if raw.is_empty(): return {}
+	var b := raw.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
+	var hl := b.decode_u32(0)
+	var d: Dictionary = JSON.parse_string(b.slice(4, 4 + hl).get_string_from_utf8())
+	var bones: Array = d["bones"]
+	var nb := bones.size()
+	var o := 4 + hl
+	var parts := {}
+	for pm in d["parts"]:
+		var nv: int = pm[1]
+		var nt: int = pm[2]
+		var verts := PackedVector2Array()
+		verts.resize(nv)
+		for i in nv:
+			verts[i] = Vector2(b.decode_u16(o + i * 4), b.decode_u16(o + i * 4 + 2))
+		o += nv * 4
+		var tris := []
+		for i in nt:
+			var q := o + i * 6
+			tris.append(PackedInt32Array([b.decode_u16(q), b.decode_u16(q + 2), b.decode_u16(q + 4)]))
+		o += nt * 6
+		var wts := {}
+		for j in nb:
+			var arr := PackedFloat32Array()
+			arr.resize(nv)
+			var any := false
+			for i in nv:
+				var w := float(b[o + i * nb + j]) / 255.0
+				arr[i] = w
+				if w > 0.02: any = true
+			if any: wts[bones[j]] = arr
+		# نخلي مجموع الأوزان = 1
+		for i in nv:
+			var tot := 0.0
+			for bn in wts: tot += wts[bn][i]
+			if tot > 0.0:
+				for bn in wts: wts[bn][i] = wts[bn][i] / tot
+		o += nv * nb
+		parts[pm[0]] = {"verts": verts, "tris": tris, "w": wts}
+	d["parts"] = parts
+	return d
 
 func setup(tex: Texture2D, path: String):
 	phase = randf() * 10.0
 	var key := key_for(path)
 	var d: Dictionary = _cache.get(key, {})
 	if d.is_empty():
-		d = JSON.parse_string(FileAccess.get_file_as_string(DIR + key + ".json"))
+		d = load_rig(key)
 		_cache[key] = d
 	size = Vector2(d["size"][0], d["size"][1])
 	K = float(d.get("scale", 1.0))
@@ -62,19 +110,30 @@ func setup(tex: Texture2D, path: String):
 		face_c = _v(face["center"])
 		face_r = 115.0 * float(face["s"])
 	var mask: Texture2D = load(DIR + str(d["mask"])) if d.has("mask") else null
+	sk = Skeleton2D.new()
+	sk.name = "sk"
+	add_child(sk)
+	for b in ORDER:
+		var bn := Bone2D.new()
+		bn.name = b
+		bn.set_autocalculate_length_and_angle(false)
+		bn.set_length(10.0)
+		var par: String = PARENT[b]
+		bn.position = J[b] - (Vector2.ZERO if par == "" else J[par])
+		bn.rest = Transform2D(0.0, bn.position)
+		(sk if par == "" else bone_nodes[par]).add_child(bn)
+		bone_nodes[b] = bn
+		bone_path[b] = sk.get_path_to(bn)
 	var pi := 0
 	for pname in ["body", "armL", "armR"]:
 		if not d["parts"].has(pname): continue
 		var pd: Dictionary = d["parts"][pname]
 		var poly := Polygon2D.new()
 		poly.texture = tex
-		var rest := PackedVector2Array()
-		for v in pd["verts"]: rest.append(Vector2(v[0], v[1]))
+		var rest: PackedVector2Array = pd["verts"]
 		poly.polygon = rest
 		poly.uv = rest
-		var tris := []
-		for tr in pd["tris"]: tris.append(PackedInt32Array(tr))
-		poly.polygons = tris
+		poly.polygons = pd["tris"]
 		var sm := ShaderMaterial.new()
 		sm.shader = SHADER
 		sm.set_shader_parameter("part", {"body": 0, "armL": 1, "armR": 2}[pname])
@@ -83,20 +142,20 @@ func setup(tex: Texture2D, path: String):
 		sm.set_shader_parameter("fig_size", size)
 		poly.material = sm
 		add_child(poly)
-		var W: Dictionary = pd["weights"]
-		var vb := []
-		var fidx := PackedInt32Array()
-		for i in rest.size():
-			var lst := []
-			var tot := 0.0
-			for b in W:
-				var w: float = W[b][i]
-				if w > 0.02:
-					lst.append([b, w]); tot += w
-			for e in lst: e[1] /= tot
-			vb.append(lst)
-			if pname == "body" and not face.is_empty() and rest[i].distance_to(face_c) < face_r: fidx.append(i)
-		parts.append({"poly": poly, "rest": rest, "vb": vb, "face": fidx, "out": rest.duplicate()})
+		poly.skeleton = NodePath("../sk")
+		for bn in pd["w"]:
+			poly.add_bone(bone_path[bn], pd["w"][bn])
+		mats.append(sm)
+		sm.set_shader_parameter("K", K)
+		sm.set_shader_parameter("mid_x", mid_x)
+		sm.set_shader_parameter("belly_y", belly_y)
+		sm.set_shader_parameter("has_face", not face.is_empty())
+		if not face.is_empty():
+			for fk in ["eyeA", "eyeB", "rA", "rB", "mL", "mR", "chA", "chB"]:
+				sm.set_shader_parameter(fk, _v(face[fk]))
+			sm.set_shader_parameter("face_c", face_c)
+			sm.set_shader_parameter("face_r", face_r)
+			sm.set_shader_parameter("fs", float(face["s"]))
 		pi += 1
 	for n in ["sway", "lean", "head", "chestY", "shrugL", "shrugR", "armL", "farmL", "armR", "farmR"]:
 		spring(n, 90.0)
@@ -186,12 +245,6 @@ func calm():
 	force_blink = -1.0
 
 # ===== الهيكل =====
-func world(name: String) -> Transform2D:
-	var par: String = PARENT[name]
-	var base := Transform2D.IDENTITY if par == "" else world(par)
-	var rel: Vector2 = J[name] - (Vector2.ZERO if par == "" else J[par])
-	return base * local(name, rel)
-
 func local(name: String, rel: Vector2) -> Transform2D:
 	var rot := 0.0
 	var sc := Vector2.ONE
@@ -210,40 +263,8 @@ func local(name: String, rel: Vector2) -> Transform2D:
 		"farmR": rot = val("farmR")
 	return Transform2D(deg_to_rad(rot), sc, 0.0, rel + off)
 
-func eye_d(p: Vector2, c: Vector2, rx: float, ry: float, b: float) -> Vector2:
-	var dx := absf(p.x - c.x)
-	if dx > rx * 1.5: return Vector2.ZERO
-	var wx := 1.0 - smoothstep(rx, rx * 1.5, dx)
-	var lid := c.y + ry * 0.35
-	var wv := 0.0
-	if p.y < lid:
-		wv = 1.0 if p.y >= c.y - ry else clampf(1.0 - (c.y - ry - p.y) / (ry * 1.3), 0.0, 1.0)
-	else:
-		wv = 1.0 if p.y <= c.y + ry else clampf(1.0 - (p.y - c.y - ry) / (ry * 0.8), 0.0, 1.0)
-	return Vector2(0, b * 0.95 * (lid - p.y) * wv * wx)
-
-func bump(p: Vector2, c: Vector2, off: Vector2, r: float) -> Vector2:
-	var d2 := p.distance_squared_to(c)
-	return Vector2.ZERO if d2 > r * r * 6.0 else off * exp(-d2 / (r * r))
-
-func face_d(p: Vector2) -> Vector2:
-	var d := Vector2.ZERO
-	var fs: float = float(face["s"])
-	var b: float = clampf(val("blink"), 0.0, 1.0)
-	if b > 0.01:
-		d += eye_d(p, _v(face["eyeA"]), face["rA"][0], face["rA"][1], b) + eye_d(p, _v(face["eyeB"]), face["rB"][0], face["rB"][1], b)
-	var sm: float = val("smile")
-	if absf(sm) > 0.01:
-		d += bump(p, _v(face["mL"]), Vector2(-1.5, -4.0) * sm * fs, 10.0 * fs) + bump(p, _v(face["mR"]), Vector2(1.5, -4.5) * sm * fs, 10.0 * fs)
-		d += bump(p, _v(face["chA"]), Vector2(0, -2.2) * sm * fs, 17.0 * fs) + bump(p, _v(face["chB"]), Vector2(0, -2.2) * sm * fs, 17.0 * fs)
-	var tn: float = val("turn")
-	if absf(tn) > 0.01:
-		var r := p.distance_to(face_c)
-		if r < face_r: d.x += tn * 9.0 * fs * (1.0 - (r / face_r) * (r / face_r))
-	return d
-
 func _process(delta: float):
-	if parts.is_empty(): return
+	if mats.is_empty(): return
 	t += delta
 	if _late_release > 0.0 and t >= _late_release:
 		_late_release = -1.0
@@ -260,55 +281,28 @@ func _process(delta: float):
 		var s: Dictionary = sp[n]
 		s["v"] += (s["k"] * (s["to"] - s["x"]) - s["c"] * s["v"]) * delta
 		s["x"] += s["v"] * delta
-	sp["bun"]["to"] = -(val("head") + val("sway") + val("lean")) * 0.9
+	sp["bun"]["to"] = -(val("head") + val("sway") + val("lean")) * 0.4
 	if t >= next_blink:
 		blink_until = t + 0.12
 		next_blink = t + randf_range(2.4, 4.8)
 	target("blink", force_blink if force_blink >= 0.0 else (1.0 if t < blink_until else 0.0))
 	press_d += (press_to - press_d) * (1.0 - exp(-press_rate * delta))
 	if not finger_on: drag = drag.lerp(Vector2.ZERO, 1.0 - exp(-4.0 * delta))
-	_acc += delta
-	if _acc < 1.0 / 30.0: return
-	_acc = 0.0
 	for b in ORDER:
-		skin_m[b] = world(b) * Transform2D(0.0, -J[b])
-	var hm: Transform2D = skin_m["head"]
-	var cm: Transform2D = skin_m["chest"]
-	var pressing := press_d > 0.003
-	var su: float = val("suck")
-	var bh := 50.0 * K
-	for pt in parts:
-		var rest: PackedVector2Array = pt["rest"]
-		var vb: Array = pt["vb"]
-		var out: PackedVector2Array = pt["out"]
-		var m: ShaderMaterial = pt["poly"].material
+		var par: String = PARENT[b]
+		bone_nodes[b].transform = local(b, J[b] - (Vector2.ZERO if par == "" else J[par]))
+	for m in mats:
 		m.set_shader_parameter("press_c", press_c)
 		m.set_shader_parameter("press_d", press_d)
 		m.set_shader_parameter("press_r", PR)
-		for i in rest.size():
-			var p := rest[i]
-			var acc := Vector2.ZERO
-			for e in vb[i]:
-				acc += (skin_m[e[0]] * p) * float(e[1])
-			if pressing:
-				var r := p.distance_to(press_c)
-				if r < PR * 2.8:
-					var f := exp(-(r * r) / (PR * PR))
-					var g := exp(-pow((r - PR * 1.5) / (PR * 0.55), 2.0))
-					var dir := (p - press_c) / maxf(r, 1.0)
-					acc += cm.basis_xform((press_c - p) * 0.17 * press_d * f + dir * 2.4 * K * press_d * g + drag * f * press_d)
-			if su > 0.003 and absf(p.y - belly_y) < bh:
-				var wy := 1.0 - smoothstep(bh * 0.4, bh, absf(p.y - belly_y))
-				acc += cm.basis_xform(Vector2((mid_x - p.x) * 0.07 * su * wy, -3.0 * K * su * wy))
-			out[i] = acc
-		for i in pt["face"]:
-			var fd := face_d(rest[i])
-			if fd != Vector2.ZERO: out[i] += hm.basis_xform(fd)
-		pt["poly"].polygon = out
+		m.set_shader_parameter("drag", drag)
+		m.set_shader_parameter("suck", val("suck"))
+		m.set_shader_parameter("blink", clampf(val("blink"), 0.0, 1.0))
+		m.set_shader_parameter("smile", val("smile"))
+		m.set_shader_parameter("turn", val("turn"))
 
 func set_light(amb: Color, side: float, lit: float):
-	for pt in parts:
-		var m: ShaderMaterial = pt["poly"].material
+	for m in mats:
 		m.set_shader_parameter("amb", Vector3(amb.r, amb.g, amb.b))
 		m.set_shader_parameter("side", side)
 		m.set_shader_parameter("lit", lit)

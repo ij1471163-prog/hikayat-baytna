@@ -1,6 +1,6 @@
 # يبني هيكل حي تلقائي لكل صورة من نتيجة كشف المفاصل (detect.py)
 # المخرجات لكل صورة: <key>.json (عظام + شبكة + أوزان + وجه) و <key>_mask.png (أي بكسل للذراع)
-import sys, json, os, numpy as np
+import sys, json, os, struct, gzip, numpy as np
 from PIL import Image
 from scipy import ndimage
 
@@ -124,7 +124,7 @@ def build(path, det, out_dir, key, root_dir):
         wm = wm[iy, ix]
         wm /= np.maximum(wm.sum(-1, keepdims=True), 1e-6)
         dil = ndimage.binary_dilation(pm, iterations=3)
-        step = max(6, int(H / 120))
+        step = max(6, int(H / 95))
         fine_y = int(head_y) if pname == "body" else -1
         fs = max(3, step // 2)
         verts = []; vid = {}; tris = []
@@ -162,8 +162,7 @@ def build(path, det, out_dir, key, root_dir):
                     tris += [[a, b, c], [a, c, d]]
             y += step
         wts = np.array([wm[min(yy // s, wm.shape[0] - 1), min(xx // s, wm.shape[1] - 1)] for (xx, yy) in verts])
-        out_parts[pname] = {"verts": verts, "tris": tris,
-            "weights": {b: [round(float(v), 3) for v in wts[:, i]] for i, b in enumerate(BONES) if wts[:, i].max() > 0.01}}
+        out_parts[pname] = {"verts": np.array(verts, np.uint16), "tris": np.array(tris, np.uint16), "w": np.clip(np.round(wts * 255), 0, 255).astype(np.uint8)}
     # الوجه
     face = {}
     fd = det.get("face", {})
@@ -181,21 +180,35 @@ def build(path, det, out_dir, key, root_dir):
         ml, mr = P["mouthL"], P["mouthR"]
         if ml[0] > mr[0]: ml, mr = mr, ml
         ed = np.linalg.norm(eb - ea)
-        if ed > W * 0.02:
+        # تأكد إن الوجه منطقي (العيون فوق الرقبة وقريبة من الأنف)
+        ok_face = ed > W * 0.02 and 0.12 * shw < ed < 0.6 * shw and max(ea[1], eb[1]) < neck[1] and abs((ea[0] + eb[0]) / 2 - q["nose"][0]) < ed
+        if ok_face:
             face = {"eyeA": ea.tolist(), "eyeB": eb.tolist(), "rA": [float(ra) * 1.15, float(max(ha * 1.3, ra * 0.55))],
                     "rB": [float(rb) * 1.15, float(max(hb * 1.3, rb * 0.55))],
                     "mL": ml.tolist(), "mR": mr.tolist(),
                     "chA": [ea[0] + 4 * ed / 61, ea[1] + (ml[1] - ea[1]) * 0.6], "chB": [eb[0], eb[1] + (mr[1] - eb[1]) * 0.6],
                     "center": P["center"].tolist(), "s": float(ed / 61.0)}
     figh = float(np.ptp(np.where(A.any(1))[0]))
-    res = {"size": [W, H], "scale": figh / 1500.0, "joints": {k: [round(float(v[0]), 1), round(float(v[1]), 1)] for k, v in joints.items()},
-           "arm_free": arm_free, "face": face, "parts": out_parts, "mask": key + "_mask.png"}
-    json.dump(res, open(os.path.join(out_dir, key + ".json"), "w"), separators=(",", ":"))
+    hdr = {"size": [W, H], "scale": figh / 1500.0, "joints": {k: [round(float(v[0]), 1), round(float(v[1]), 1)] for k, v in joints.items()},
+           "arm_free": arm_free, "face": face, "mask": key + "_mask.png", "bones": BONES,
+           "parts": [[n, int(p["verts"].shape[0]), int(p["tris"].shape[0])] for n, p in out_parts.items()]}
+    hb = json.dumps(hdr, separators=(",", ":")).encode()
+    blob = struct.pack("<I", len(hb)) + hb
+    for n, p in out_parts.items():
+        blob += p["verts"].tobytes() + p["tris"].tobytes() + p["w"].tobytes()
+    open(os.path.join(out_dir, key + ".rig"), "wb").write(gzip.compress(blob, 9))
     # صورة تأكد
     pal = np.array([[90, 90, 90], [200, 120, 60], [230, 200, 60], [60, 180, 230], [230, 80, 200], [60, 200, 90], [30, 120, 50], [200, 60, 60], [120, 30, 30]], np.uint8)
     viz = pal[lab].copy(); viz[~A] = 40
     v = Image.fromarray(viz)
-    return v, "ok %s verts=%d" % (arm_free, sum(len(p["verts"]) for p in out_parts.values()))
+    # نخلط الصورة الأصلية مع الألوان عشان نشوف الوجه، ونرسم العيون والفم
+    v = Image.blend(v.convert("RGB"), Image.alpha_composite(Image.new("RGBA", im.size, (40, 40, 40, 255)), im).convert("RGB"), 0.55)
+    from PIL import ImageDraw
+    dr = ImageDraw.Draw(v); rr = max(3, W // 120)
+    if face:
+        for k in ["eyeA", "eyeB", "mL", "mR"]:
+            x0, y0 = face[k]; dr.ellipse([x0 - rr, y0 - rr, x0 + rr, y0 + rr], outline=(255, 0, 0), width=max(1, rr // 2))
+    return v, "ok %s verts=%d" % (arm_free, sum(int(p["verts"].shape[0]) for p in out_parts.values()))
 
 if __name__ == "__main__":
     det = json.load(open(sys.argv[1])); out_dir = sys.argv[2]; root_dir = sys.argv[3]
@@ -206,8 +219,15 @@ if __name__ == "__main__":
         v, msg = build(path, det[path], out_dir, key, root_dir)
         print(path, msg)
         if v is not None:
-            v = v.resize((int(v.width * 360 / v.height), 360)); tiles.append(v)
+            tiles.append((path.split("/")[-1], v))
     if tiles:
-        sheet = Image.new("RGB", (sum(t.width for t in tiles), 360)); x = 0
-        for t in tiles: sheet.paste(t, (x, 0)); x += t.width
+        from PIL import ImageDraw
+        cols, tw, th = 12, 150, 230
+        rows = (len(tiles) + cols - 1) // cols
+        sheet = Image.new("RGB", (cols * tw, rows * th), (30, 30, 30))
+        for i, (nm, t) in enumerate(tiles):
+            t = t.copy(); t.thumbnail((tw, th - 14))
+            x, y = (i % cols) * tw, (i // cols) * th
+            sheet.paste(t, (x + (tw - t.width) // 2, y))
+            ImageDraw.Draw(sheet).text((x + 2, y + th - 13), "%d %s" % (i, nm[:20]), fill=(255, 255, 0))
         sheet.save(os.path.join(out_dir, "_labels.png"))
