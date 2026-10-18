@@ -1844,7 +1844,13 @@ func sprite_path_for(npc: String) -> String:
   return "res://assets/sprites/ghost/body6.png" if int(quest_state.get("ghost", 0)) < 4 else "res://assets/sprites/ghost/body4.png"
  var p: String = str(WorldData.NPCS[npc]["img"]).replace("assets/npcs", "assets/sprites")
  # صورة كاملة من الراس للرجل (تنحط على أرضية المكان بمقاس صحيح)
- var fb := "res://assets/sprites/full/%s.png" % p.get_file().get_basename()
+ var base := p.get_file().get_basename()
+ # تزور البيت في الويكند وتطبخ مع ليان
+ if location == "المطبخ":
+  for v in ["_cook", "_cook_cut"]:
+   var cp := "res://assets/sprites/full/%s%s.png" % [base, v]
+   if ResourceLoader.exists(cp): return cp
+ var fb := "res://assets/sprites/full/%s.png" % base
  if ResourceLoader.exists(fb): return fb
  var hd := "res://assets/sprites_hd/%s.png" % p.get_file().get_basename()
  if ResourceLoader.exists(hd): return hd
@@ -1910,8 +1916,10 @@ func refresh_cards():
   var post := ""
   if "/idle/" in path and not half_body:
    post = str(_idle_meta.get(path, {}).get("post", "stand"))
+  elif "/full/" in path and path.ends_with("_cut.png"):
+   post = "standcut"
   # داخل الغرفة: الشخصية واقفة على أرضية الغرفة بمقاس صحيح حسب عمق المكان (مو عملاقة قدام الكاميرا)
-  var staged: bool = explore_mode and sprite_focus.is_empty() and RoomsData.ROOMS.has(location) and full_body and not is_steam and not half_body
+  var staged: bool = explore_mode and sprite_focus.is_empty() and RoomsData.ROOMS.has(location) and full_body and not is_steam and not half_body and post != "standcut"
   if staged:
    var st: Dictionary = RoomsData.ROOMS[location].get("stage", {})
    var sbase: float = vh * float(st.get("h", 0.52))
