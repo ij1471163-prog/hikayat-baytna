@@ -1812,8 +1812,15 @@ func idle_pose(npc: String) -> Dictionary:
  var lst: Array = PoseData.LAYAN if npc == "ليان" else (PoseData.NORA if npc == "نورة" else [])
  var cands: Array = []
  for p in lst:
-  if sprite_focus.is_empty() and str(p["post"]) == "standcut": continue
-  if loc in (p["rooms"] as Array) and ResourceLoader.exists("res://assets/sprites/idle/%s.png" % p["id"]): cands.append(p)
+  var pose_id := str(p["id"])
+  var cleaning_pose := pose_id in ["l_mop", "l_laundry", "l_maid_mop", "l_maid_kneel", "c_wipe_front", "c3_stack", "c3_white", "c3_gray", "c3_kneel_fold", "c3_rear_towels", "c3_squat_gray", "c3_kneel_blue", "c3_armsup", "c3_bend_blue", "c3_rear_white", "c5_stack", "c5_blue", "c5_white_up", "c5_rear_blue", "c5_rear_basket", "c5_gray", "c5_squat_white", "c5_kneel_stack", "c5_kneel_pink", "c5_kneel_up", "c5_squat_gray", "c5_bend", "c7_wipe", "c7_mop", "c7_broom", "c7_basket", "c8_mop", "c_mop_front", "c2_wipe", "c2_mop", "c2_broom", "c9_kneel_fold", "n_mop", "n_laundry", "n_maid_floor", "n_wipe_bucket", "n_fold_laundry", "n_maid_duster", "n_mop2", "n_laundry2", "n_maid_table", "n_kneel_wipe", "n_fold2"]
+  # Keep cleaning poses available during normal exploration; standcut poses were previously excluded.
+  if sprite_focus.is_empty() and str(p["post"]) == "standcut" and not cleaning_pose: continue
+  if loc in (p["rooms"] as Array) and ResourceLoader.exists("res://assets/sprites/idle/%s.png" % pose_id):
+   var candidate: Dictionary = p.duplicate()
+   if cleaning_pose and (loc == "غرفة الغسيل" or pose_id in ["l_mop", "l_laundry", "l_maid_mop", "l_maid_kneel"]):
+    candidate["w"] = float(candidate.get("w", 1.0)) * 3.0
+   cands.append(candidate)
  if cands.is_empty(): return {}
  var rng := RandomNumberGenerator.new()
  rng.seed = hash("%d_%d_%d_%s_%s" % [day, period, _pose_seed, loc, npc])
