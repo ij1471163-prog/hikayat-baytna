@@ -4,8 +4,8 @@ extends Node2D
 
 const DIR := "res://assets/rig/"
 const SHADER := preload("res://rig_body.gdshader")
-const ORDER := ["root", "spine", "chest", "head", "bun", "uarmL", "farmL", "uarmR", "farmR"]
-const PARENT := {"root": "", "spine": "root", "chest": "spine", "head": "chest", "bun": "head", "uarmL": "chest", "farmL": "uarmL", "uarmR": "chest", "farmR": "uarmR"}
+const ORDER := ["root", "spine", "chest", "head", "bun", "uarmL", "farmL", "uarmR", "farmR", "thighL", "shinL", "thighR", "shinR"]
+const PARENT := {"root": "", "spine": "root", "chest": "spine", "head": "chest", "bun": "head", "uarmL": "chest", "farmL": "uarmL", "uarmR": "chest", "farmR": "uarmR", "thighL": "root", "shinL": "thighL", "thighR": "root", "shinR": "thighR"}
 static var _cache := {}
 
 var size := Vector2.ONE
@@ -32,6 +32,7 @@ var extra_sway := 0.0
 var extra_head := 0.0
 var tickle_until := 0.0
 var calm_at := -1.0
+var feet_side := 0.0
 var PR := 24.0
 var press_c := Vector2(-9999, -9999)
 var press_d := 0.0
@@ -102,7 +103,9 @@ func setup(tex: Texture2D, path: String):
 		_cache[key] = d
 	size = Vector2(d["size"][0], d["size"][1])
 	K = float(d.get("scale", 1.0))
-	for b in ORDER: J[b] = Vector2(d["joints"][b][0], d["joints"][b][1])
+	for b in ORDER:
+		var jj = d["joints"].get(b, d["joints"]["root"])
+		J[b] = Vector2(jj[0], jj[1])
 	face = d.get("face", {})
 	mid_x = J["root"].x
 	belly_y = lerpf(J["chest"].y, J["root"].y, 0.55)
@@ -157,7 +160,7 @@ func setup(tex: Texture2D, path: String):
 			sm.set_shader_parameter("face_r", face_r)
 			sm.set_shader_parameter("fs", float(face["s"]))
 		pi += 1
-	for n in ["sway", "lean", "head", "chestY", "shrugL", "shrugR", "armL", "farmL", "armR", "farmR"]:
+	for n in ["sway", "lean", "head", "chestY", "shrugL", "shrugR", "armL", "farmL", "armR", "farmR", "legL", "kneeL", "legR", "kneeR"]:
 		spring(n, 90.0)
 	spring("bun", 38.0, 4.5)
 	spring("blink", 420.0)
@@ -226,9 +229,15 @@ func react(zone: String, kind: String, pt: Vector2):
 				_r(0, 0, 0, 1.2, -10, -10, 1.0, 0.55, 45); tickle_until = t + 1.2
 			else:
 				_r(3.0 * s, 5.0 * s, 0.6 * s, 1.1, -8 if s < 0 else 0, 0 if s < 0 else -8, 0.6, 0.5, 35); tickle_until = t + 0.9
-		"leg": _r(-1.8 * s, -4.0 * s, -0.4 * s, 0.6, 0, 0, 0, -1, 25)
+		"leg":
+			_r(-1.8 * s, -4.0 * s, -0.4 * s, 0.6, 0, 0, 0, -1, 25)
+			if s < 0:
+				target("legL", -3.5); target("kneeL", 6.0)
+			else:
+				target("legR", 3.5); target("kneeR", -6.0)
 		"feet":
 			_r(0, 0, 0, 1.2, -8, -8, 0, 0.55, 40); tickle_until = t + 1.4; calm_at = t + 2.0
+			feet_side = s
 		_: _r(0.8 * s, 4.0 * s, 0.3 * s, 0.7, 0, 0, 0, -1, 25)
 	if held: calm_at = maxf(calm_at, t + 2.0)
 
@@ -240,7 +249,8 @@ func _r(sw: float, hd: float, tn: float, sm: float, sl: float, sr: float, su: fl
 
 func calm():
 	extra_sway = 0.0; extra_head = 0.0
-	for n in ["turn", "shrugL", "shrugR", "suck", "armL", "farmL", "armR", "farmR"]: target(n, 0.0)
+	for n in ["turn", "shrugL", "shrugR", "suck", "armL", "farmL", "armR", "farmR", "legL", "kneeL", "legR", "kneeR"]: target(n, 0.0)
+	feet_side = 0.0
 	target("smile", 0.3)
 	force_blink = -1.0
 
@@ -261,6 +271,10 @@ func local(name: String, rel: Vector2) -> Transform2D:
 		"farmL": rot = val("farmL")
 		"uarmR": rot = val("armR"); off = Vector2(0, val("shrugR"))
 		"farmR": rot = val("farmR")
+		"thighL": rot = val("legL")
+		"shinL": rot = val("kneeL")
+		"thighR": rot = val("legR")
+		"shinR": rot = val("kneeR")
 	return Transform2D(deg_to_rad(rot), sc, 0.0, rel + off)
 
 func _process(delta: float):
@@ -277,6 +291,12 @@ func _process(delta: float):
 	target("sway", 0.7 * sin(TAU * (t + phase) / 5.2) + extra_sway + ((2.6 if k % 2 == 0 else -2.6) if tk else 0.0))
 	target("head", 1.0 * sin(TAU * (t + phase) / 6.3) + extra_head + ((-3.5 if k % 2 == 0 else 3.5) if tk else 0.0))
 	target("chestY", 0.012 * sin(TAU * (t + phase) / (1.8 if tk else 3.6)))
+	if tk:
+		var lw := 2.2 if k % 2 == 0 else -2.2
+		target("legL", -absf(lw) if feet_side <= 0.0 and k % 2 == 0 else -0.6)
+		target("kneeL", absf(lw) * 1.6 if feet_side <= 0.0 and k % 2 == 0 else 1.0)
+		target("legR", absf(lw) if feet_side >= 0.0 and k % 2 == 1 else 0.6)
+		target("kneeR", -absf(lw) * 1.6 if feet_side >= 0.0 and k % 2 == 1 else -1.0)
 	for n in sp:
 		var s: Dictionary = sp[n]
 		s["v"] += (s["k"] * (s["to"] - s["x"]) - s["c"] * s["v"]) * delta
