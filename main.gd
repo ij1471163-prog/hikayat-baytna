@@ -6,10 +6,13 @@ var period := 0
 var money := 600
 var relationship := 50
 var mood := "هادئة"
-var outfit := "بيجامة وردية"
+var outfit := "توب وشورت البيت"
 const LiveBody := preload("res://live_body.gd")
+const LayanRig := preload("res://layan_rig.gd")
+const ROOM_LIGHT := preload("res://room_light.gdshader")
+var _light_cache := {}
 var live_on := true
-var owned_outfits := ["بيجامة وردية", "بيجامة بيضاء", "كاجوال تيشيرت وجينز", "بلوزة وردية وبنطال"]
+var owned_outfits := ["توب وشورت البيت", "بيجامة وردية", "بيجامة بيضاء", "كاجوال تيشيرت وجينز", "بلوزة وردية وبنطال"]
 var outfit_textures := {
  "بيجامة وردية": "res://assets/layan_outfits/01_pink_home_pajamas.png",
  "بيجامة بيضاء": "res://assets/layan_outfits/02_white_sleepwear.png",
@@ -29,7 +32,8 @@ var outfit_textures := {
  "بيجامة الدباديب": "res://assets/layan_outfits/16_teddy_pajamas.png",
  "طقم رياضي رمادي": "res://assets/layan_outfits/17_gray_lounge_set.png",
  "تيشيرت الدبدوب": "res://assets/layan_outfits/18_teddy_tshirt.png",
- "فستان أصفر مزهر": "res://assets/layan_outfits/19_yellow_floral_dress.png"
+ "فستان أصفر مزهر": "res://assets/layan_outfits/19_yellow_floral_dress.png",
+ "توب وشورت البيت": "res://assets/layan_outfits/20_home_tank_shorts.png"
 }
 var laundry := 2
 var energy := 90
@@ -1002,11 +1006,45 @@ func bg_light(cx: float, cy: float, rw: float, rh: float) -> Color:
  var t := Color(1, 1, 1).lerp(hue, 0.16)
  return Color(t.r * k, t.g * k, t.b * k)
 
+# لون إضاءة الغرفة من الخلفية نفسها + جهة الضوء (يسار/يمين)
+func room_light() -> Dictionary:
+ var tx: Texture2D = bg_tex.texture
+ if tx == null: return {"amb": Color.WHITE, "side": 0.0}
+ var key := tx.resource_path
+ if _light_cache.has(key): return _light_cache[key]
+ var img := tx.get_image()
+ var res := {"amb": Color.WHITE, "side": 0.0}
+ if img != null:
+  if img.is_compressed(): img.decompress()
+  img = img.duplicate()
+  img.resize(48, 48, Image.INTERPOLATE_BILINEAR)
+  var acc := Color(0, 0, 0)
+  var n := 0.0
+  var lb := 0.0
+  var rb := 0.0
+  for y in range(10, 44):
+   for x in 48:
+    var c := img.get_pixel(x, y)
+    acc += c
+    n += 1.0
+    if y < 30:
+     if x < 24: lb += c.get_luminance()
+     else: rb += c.get_luminance()
+  acc = acc / n
+  var mx := maxf(acc.r, maxf(acc.g, acc.b))
+  var hue := Color(acc.r / mx, acc.g / mx, acc.b / mx)
+  var lum := clampf(acc.get_luminance() / 0.42, 0.72, 1.02)
+  var a := Color.WHITE.lerp(hue, 0.42) * lum
+  res = {"amb": Color(a.r, a.g, a.b), "side": clampf((rb - lb) / maxf(rb + lb, 0.001) * 4.0, -1.0, 1.0)}
+ _light_cache[key] = res
+ return res
+
 func shadow_texture() -> Texture2D:
  if _shadow_tex == null:
   var g := Gradient.new()
-  g.set_color(0, Color(0, 0, 0, 0.5))
+  g.set_color(0, Color(0, 0, 0, 0.62))
   g.set_color(1, Color(0, 0, 0, 0.0))
+  g.add_point(0.4, Color(0, 0, 0, 0.3))
   var gt := GradientTexture2D.new()
   gt.gradient = g
   gt.fill = GradientTexture2D.FILL_RADIAL
@@ -1977,7 +2015,9 @@ func refresh_cards():
   var w: float = h * float(tex.get_width()) / float(tex.get_height())
   if not is_steam and not in_shower:
    # الشخصية كاملة داخل الشاشة (الوضعيات العريضة ما تنقص من الطرف)
-   var hw: float = (w * 0.5) / vw + 0.01
+   # الحد حسب جسمها الفعلي (مو الفراغ الشفاف حولها) عشان تقدر توقف قريب من طرف الغرفة
+   var fb: Vector2 = fig_span(path, tex)
+   var hw: float = (w * maxf(0.5 - fb.x, fb.y - 0.5)) / vw + 0.01
    cs[i] = clampf(float(cs[i]), minf(hw, 0.5), maxf(1.0 - hw, 0.5))
   var sh_node: Control = null
   if full_body:
@@ -2054,14 +2094,27 @@ func refresh_cards():
   b.self_modulate = Color(tint.r, tint.g, tint.b, 0.82 if npc == "الشبح" else 1.0)
   # جسم حي: الصورة نفسها تتنفس وتتحرك، والجلد ينضغط تحت الإصبع
   if live_on and fx_level > 0 and explore_mode and full_body and not is_steam and not in_shower and npc != "الشبح":
-   var lb = LiveBody.new()
+   var rigged: bool = path.ends_with("/20_home_tank_shorts.png") and LayanRig.available()
+   var lb = LayanRig.new() if rigged else LiveBody.new()
    lb.setup(tex, path)
-   lb.scale = Vector2(w / float(tex.get_width()), h / float(tex.get_height()))
+   lb.scale = Vector2(w / lb.size.x, h / lb.size.y)
    lb.modulate = Color(tint.r, tint.g, tint.b, 1.0)
    b.self_modulate = Color(1, 1, 1, 0)
    b.add_child(lb)
    b.move_child(lb, 0)
    b.set_meta("live", lb)
+  # تدمج مع الغرفة: نفس لون إضاءة المكان وجهة اللمبة
+  if staged and fx_level > 0:
+   var rl: Dictionary = room_light()
+   if b.has_meta("live"):
+    b.get_meta("live").set_light(rl["amb"], rl["side"], 1.0)
+   else:
+    var rm := ShaderMaterial.new()
+    rm.shader = ROOM_LIGHT
+    rm.set_shader_parameter("amb", Vector3(rl["amb"].r, rl["amb"].g, rl["amb"].b))
+    rm.set_shader_parameter("side", rl["side"])
+    rm.set_shader_parameter("lit", 1.0)
+    b.material = rm
   sprites_layer.add_child(b)
   sprite_nodes[npc] = b
   animate_sprite(b, npc, path, w, h)
@@ -3129,6 +3182,25 @@ func _sprite_input(ev: InputEvent, b: Control, npc: String):
     _set_sprite_depth(b, shn, float(_tch["y0"]) + d.y / get_viewport_rect().size.y)
    b.rotation_degrees = clampf((ev as InputEventMouseMotion).relative.x * 0.35, -5.0, 5.0)
   b.accept_event()
+
+# أقصى يسار ويمين جسم الشخصية داخل الصورة (نسبة 0..1)
+var _span_cache := {}
+func fig_span(path: String, tex: Texture2D) -> Vector2:
+ if _span_cache.has(path): return _span_cache[path]
+ var r := Vector2(0, 1)
+ var mk: BitMap = click_mask_for(path, tex)
+ if mk != null:
+  var sz := mk.get_size()
+  var x0 := sz.x
+  var x1 := -1
+  for y in range(0, sz.y, 4):
+   for x in range(0, sz.x, 2):
+    if mk.get_bit(x, y):
+     x0 = mini(x0, x)
+     x1 = maxi(x1, x)
+  if x1 > x0: r = Vector2(float(x0) / sz.x, float(x1) / sz.x)
+ _span_cache[path] = r
+ return r
 
 # حدود جسم الشخصية داخل الصورة (بعض الصور فيها فراغ شفاف جنب الشخصية) كنسبة 0..1
 var _fig_cache := {}

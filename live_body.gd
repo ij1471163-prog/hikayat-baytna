@@ -202,3 +202,11 @@ func _process(delta: float):
 	mat.set_shader_parameter("press_r", press_r)
 	mat.set_shader_parameter("press_d", press_d)
 	mat.set_shader_parameter("drag", drag)
+
+func set_light(amb: Color, side: float, lit: float):
+	for m in _mats():
+		m.set_shader_parameter("amb", Vector3(amb.r, amb.g, amb.b))
+		m.set_shader_parameter("side", side)
+		m.set_shader_parameter("lit", lit)
+
+func _mats() -> Array: return [mat] if mat != null else []
