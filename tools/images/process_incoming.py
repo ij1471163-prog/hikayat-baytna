@@ -186,7 +186,7 @@ def smart_place(src, dry, backup_dir, db, notes):
     im = check_image(src)
     tmp = Path(tempfile.mkdtemp()) / "x.png"
     process_char(im, tmp, notes)
-    info = wl.analyze(str(tmp))
+    info = wl.analyze(str(tmp), str(src))
     if not info.get("ok"): raise ValueError(info.get("why", "ما قدرت أحللها."))
     if info["char_conf"] < wl.MIN_CHAR_CONF:
         alt = info["near"][0][1] if info.get("near") else "?"
@@ -197,8 +197,9 @@ def smart_place(src, dry, backup_dir, db, notes):
     else:
         rooms = "، ".join(info["rooms"])
         per = "، ".join(PERIODS[i] for i in info["periods"])
-        why = (f"{info['char']} ({round(info['char_conf'] * 100)}٪) — «{info['label']}» — {AR_ACT.get(info['act'], info['act'])} ({round(info['act_conf'] * 100)}٪)، "
-               f"{AR_POST.get(info['post'], info['post'])}. تطلع في: {rooms} | الوقت: {per}")
+        ac = "حسب اللبس" if info["act_conf"] < 0 else f"{round(info['act_conf'] * 100)}٪"
+        why = (f"{info['char']} ({round(info['char_conf'] * 100)}٪) — «{info['label']}» — {AR_ACT.get(info['act'], info['act'])} ({ac})، "
+               f"{AR_POST.get(info['post'], info['post'])}. تطلع في: {rooms} — الوقت: {per}")
     if not dry: src.unlink()
     return dst_rel, why
 

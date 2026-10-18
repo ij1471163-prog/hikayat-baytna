@@ -111,7 +111,7 @@ def write_gd(db):
     lines.append("}")
     open(OUT_GD, "w", encoding="utf-8").write("\n".join(lines) + "\n")
 
-def analyze(png_path):
+def analyze(png_path, orig_path=None):
     """يحلل صورة شخصية مقصوصة. يرجع قرار كامل (بدون ما يحفظ شي)"""
     import detect
     im = Image.open(png_path).convert("RGBA")
@@ -121,11 +121,20 @@ def analyze(png_path):
     refs = characters.build_refs()
     face, body = characters.features(im)
     who, conf, near = characters.identify(face, body, refs)
-    acts = vision.zero_shot(body, {k: v[0] for k, v in ACTS.items()})
+    # وش تسوي: نشوف الصورة المقصوصة والأصلية (الخلفية تساعد: مطبخ، حمام...) ونجمع الرأيين
+    embs = [body]
+    if orig_path and os.path.exists(orig_path):
+        embs.append(vision.embed_images([Image.open(orig_path)])[0])
+    def avg(classes):
+        rs = [vision.zero_shot(e, classes) for e in embs]
+        return {k: sum(r[k] for r in rs) / len(rs) for k in classes}
+    acts = avg({k: v[0] for k, v in ACTS.items()})
     outs = vision.zero_shot(body, {k: v[0] for k, v in OUTFITS.items()})
     act = max(acts, key=acts.get); outfit = max(outs, key=outs.get)
     # لو مو متأكدة وش تسوي، اللبس يحسم (لبس خدمة = تنظف، مريول = تطبخ...)
+    act_conf = acts[act]
     if acts[act] < 0.4:
+        act_conf = -1.0   # القرار من اللبس
         act = {"maid": "cleaning", "apron": "cooking", "sport": "exercise", "towel": "towel", "office": "office"}.get(outfit, "stand")
     post = posture(det)
     if post == "stand" and im.width > im.height * 0.85: post = "sit"     # صورة عريضة = غالباً قاعدة
@@ -150,7 +159,7 @@ def analyze(png_path):
     if who == "الشبح":
         rooms, label = ["غرفة النوم"], "الشبح"
     return {"ok": True, "char": who, "char_conf": round(conf, 2), "near": near,
-            "act": act, "act_conf": round(acts[act], 2), "outfit": outfit, "outfit_conf": round(outs[outfit], 2),
+            "act": act, "act_conf": round(act_conf, 2), "outfit": outfit, "outfit_conf": round(outs[outfit], 2),
             "post": post, "rooms": rooms, "periods": A[3], "label": label, "replace": replace}
 
 def place(png_path, info, db, dry=False, backup_dir=None):
@@ -175,7 +184,7 @@ def place(png_path, info, db, dry=False, backup_dir=None):
     shutil.copy2(png_path, dst)
     if not info["replace"] and who != "الشبح":
         db["entries"].append({"id": os.path.basename(dst)[:-4], "char": who, "post": info["post"], "rooms": info["rooms"],
-                              "periods": info["periods"], "label": info["label"], "act": info["act"], "w": 1.0})
+                              "periods": info["periods"], "label": info["label"], "act": info["act"], "w": 2.0})   # الجديدة تطلع أكثر
     return dst_rel
 
 if __name__ == "__main__":
