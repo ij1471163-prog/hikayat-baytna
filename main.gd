@@ -8,6 +8,7 @@ var relationship := 50
 var mood := "هادئة"
 var outfit := "توب وشورت البيت"
 const LiveBody := preload("res://live_body.gd")
+const InteractMode := preload("res://interact_mode.gd")
 const WorldAuto := preload("res://world_auto.gd")
 const LayanRig := preload("res://layan_rig.gd")
 const RigBody := preload("res://rig_body.gd")
@@ -2360,6 +2361,7 @@ func talk_to(npc: String):
  if npc == "ليان":
   interact()
   choice("روتين ليان اليومي", layan_routine)
+  choice("تقرّب منها 💗", open_interact)
   choice("أعطها هدية", func(): gift_menu("ليان"))
   add_video_choice(npc)
   choice("رجوع", func(): go(location))
@@ -2376,6 +2378,22 @@ func npc_videos(npc: String) -> Array:
  for v in (scr.VIDEOS as Dictionary).get(npc, []):
   if ResourceLoader.exists(str(v)): vids.append(str(v))
  return vids
+
+# وضع القرب: ليان قريبة، لمس متقدم وعدادات وكاميرا
+func open_interact():
+ var layer := CanvasLayer.new()
+ layer.layer = 60   # فوق كل واجهة اللعبة
+ add_child(layer)
+ var im = InteractMode.new()
+ layer.add_child(im)
+ im.setup(self, "ليان", layan_sprite_path(), bg_tex.texture)
+ im.closed.connect(func(gain: int):
+  layer.queue_free()
+  if gain != 0:
+   var g := rel_once("interact_%d" % day, gain)
+   note.text = "لحظة حلوة مع ليان (+%d علاقة)" % g if g > 0 else ("ليان انزعجت شوي" if gain < 0 else "")
+  update_status()
+  go(location))
 
 func add_video_choice(npc: String):
  var vids := npc_videos(npc)
