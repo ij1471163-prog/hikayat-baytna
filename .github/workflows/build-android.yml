@@ -12,13 +12,41 @@ on:
       - ".github/workflows/videos.yml"
 
 jobs:
+  # الجسم الحي: يجهز هيكل أي صورة جديدة أو معدلة تلقائياً (الصور اللي ما تغيرت تنتخطى)
+  autorig:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install tools
+        run: pip install "mediapipe==0.10.14" "numpy<2" scipy pillow
+      - name: Rig new or changed images
+        run: python tools/autorig/run.py
+      - name: Keep rigs for the build
+        uses: actions/upload-artifact@v4
+        with:
+          name: rigs
+          path: assets/rig/
+          if-no-files-found: ignore
+
   build-apk:
+    needs: autorig
     runs-on: ubuntu-latest
     container:
       image: barichello/godot-ci:4.4.1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Get fresh rigs
+        uses: actions/download-artifact@v4
+        with:
+          name: rigs
+          path: assets/rig/
+        continue-on-error: true
 
       - name: Validate project files
         run: |

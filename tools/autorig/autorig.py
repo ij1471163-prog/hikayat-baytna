@@ -4,7 +4,7 @@ import sys, json, os, struct, gzip, numpy as np
 from PIL import Image
 from scipy import ndimage
 
-BONES = ["root", "spine", "chest", "head", "bun", "uarmL", "farmL", "uarmR", "farmR"]
+BONES = ["root", "spine", "chest", "head", "bun", "uarmL", "farmL", "uarmR", "farmR", "thighL", "shinL", "thighR", "shinR"]
 
 def seg_dist(px, py, a, b):
     ax, ay = a; bx, by = b
@@ -27,30 +27,51 @@ def build(path, det, out_dir, key, root_dir):
             if a in q and b in q: q[a], q[b] = q[b], q[a]
     sh = (q["shL"] + q["shR"]) / 2
     hip = (q["hipL"] + q["hipR"]) / 2
-    shw = abs(q["shR"][0] - q["shL"][0])
+    if np.linalg.norm(hip - sh) < H * 0.06: return None, "torso?"
+    shw = max(abs(q["shR"][0] - q["shL"][0]), np.linalg.norm(hip - sh) * 0.6)
     torso = hip[1] - sh[1]
-    # واقفة أو قاعدة مستقيمة فقط (المنسدحة ترجع للنسخة البسيطة)
-    if torso < H * 0.12 or shw < W * 0.08 or abs(sh[0] - hip[0]) > torso * 0.5:
-        return None, "not upright"
-    hn = sh[1] - q["nose"][1]
-    if hn < shw * 0.25: return None, "head?"
-    neck = np.array([sh[0] + (q["nose"][0] - sh[0]) * 0.3, sh[1] - hn * 0.38])
-    chest = np.array([sh[0] * 0.5 + hip[0] * 0.5, sh[1] + torso * 0.45])
+    hn = np.linalg.norm(sh - q["nose"])
+    if hn < shw * 0.15: return None, "head?"
+    neck = sh + (q["nose"] - sh) * 0.38
+    chest = sh + (hip - sh) * 0.45
+    up = (q["nose"] - neck) / max(np.linalg.norm(q["nose"] - neck), 1e-3)
     joints = {"root": hip, "spine": hip, "chest": chest, "head": neck,
-              "bun": np.array([q["nose"][0], q["nose"][1] - hn * 1.1]),
+              "bun": q["nose"] + up * hn * 0.9,
               "uarmL": q["shL"], "farmL": q["elL"], "uarmR": q["shR"], "farmR": q["elR"]}
     ys, xs = np.mgrid[0:H, 0:W].astype(np.float32)
-    # ===== الذراعين: الحد بين الذراع والجسم في كل صف =====
     R = shw * 0.16
-    lab = np.zeros((H, W), np.int16)
-    lab[ys < hip[1]] = 1
-    lab[ys < chest[1]] = 2
+    # ===== كل بكسل يتبع أقرب عظمة (يشتغل على أي وضعية: واقفة، قاعدة، منحنية) =====
+    INF = np.full((H, W), 1e9, np.float32)
+    dist = {1: seg_dist(xs, ys, hip, chest), 2: seg_dist(xs, ys, chest, neck)}
+    for side in "LR":
+        hand = q["wr" + side] + (q["wr" + side] - q["el" + side]) * 0.6
+        dist[5 if side == "L" else 7] = seg_dist(xs, ys, q["sh" + side], q["el" + side])
+        dist[6 if side == "L" else 8] = np.minimum(seg_dist(xs, ys, q["el" + side], q["wr" + side]), seg_dist(xs, ys, q["wr" + side], hand))
+        kn, an = q.get("kn" + side), q.get("an" + side)
+        th, sn = (9, 10) if side == "L" else (11, 12)
+        if kn is not None and det["pose"]["kn" + side][2] > 0.3 and -0.05 * H < kn[1] < H * 1.05:
+            joints["thigh" + side] = q["hip" + side]; joints["shin" + side] = kn
+            dist[th] = seg_dist(xs, ys, q["hip" + side], kn)
+            if an is not None and det["pose"]["an" + side][2] > 0.2:
+                foot = an + (an - kn) * 0.25
+                dist[sn] = seg_dist(xs, ys, kn, foot)
+            else:
+                joints["shin" + side] = kn
+    for side in "LR":
+        if "thigh" + side not in joints:
+            joints["thigh" + side] = q["hip" + side]; joints["shin" + side] = q["hip" + side] + (0, shw)
+    keys = sorted(dist)
+    stack = np.stack([dist[k] for k in keys], -1)
+    lab = np.array(keys, np.int16)[np.argmin(stack, -1)]
+    # الراس: دائرة حول الوجه فوق الرقبة
+    hr = max(hn * 1.15, shw * 0.42)
+    above = ((xs - neck[0]) * up[0] + (ys - neck[1]) * up[1]) > -hn * 0.05
+    dn = np.hypot(xs - q["nose"][0], ys - q["nose"][1])
+    lab[(dn < hr) & above] = 3
+    # الشعر فوق الراس يتبع الراس (مو الصدر)
+    far_up = ((xs - neck[0]) * up[0] + (ys - neck[1]) * up[1]) > hn * 0.8
+    lab[far_up & (dn < hr * 2.2)] = 3
     head_y = neck[1] + hn * 0.12
-    lab[ys < head_y] = 3
-    lab[ys < joints["bun"][1]] = 4
-    # خصلات الشعر النازلة على الكتف تتبع الصدر
-    fw = shw * 0.36
-    lab[(ys >= neck[1] - hn * 0.45) & (ys < head_y) & (np.abs(xs - q["nose"][0]) > fw)] = 2
     arm_free = {}
     for side, s, e, w in [("L", "shL", "elL", "wrL"), ("R", "shR", "elR", "wrR")]:
         S, E, Wr = q[s], q[e], q[w]
@@ -83,7 +104,10 @@ def build(path, det, out_dir, key, root_dir):
             bound[y] = b
         free = tot > 0 and gaps / tot > 0.7 and min(det["pose"]["wrL"][2], det["pose"]["wrR"][2], det["pose"]["elL"][2], det["pose"]["elR"][2]) > 0.4
         arm_free[side] = bool(free)
-        if not free: continue
+        u, f = (5, 6) if side == "L" else (7, 8)
+        if not free:
+            lab[np.isin(lab, [u, f])] = 2
+            continue
         by = np.array(sorted(bound)); bx = np.array([bound[y] for y in by])
         bxi = np.interp(ys, by, bx)
         outer = (xs < bxi) if side == "L" else (xs > bxi)
@@ -93,7 +117,7 @@ def build(path, det, out_dir, key, root_dir):
         if n:
             sizes = ndimage.sum(arm, lb, range(1, n + 1))
             arm = lb == (1 + int(np.argmax(sizes)))
-        u, f = (5, 6) if side == "L" else (7, 8)
+        lab[np.isin(lab, [u, f]) & ~arm] = 2
         lab[arm & (ys < E[1])] = u
         lab[arm & (ys >= E[1])] = f
     armL = np.isin(lab, [5, 6]); armR = np.isin(lab, [7, 8])
@@ -103,7 +127,7 @@ def build(path, det, out_dir, key, root_dir):
     mask = np.zeros((H, W, 3), np.uint8)
     mask[..., 0] = armLd * 255; mask[..., 1] = armRd * 255; mask[..., 2] = (armL | armR) * 255
     Image.fromarray(mask).save(os.path.join(out_dir, key + "_mask.png"), optimize=True)
-    parts_def = {"body": (A & ~np.isin(lab, [5, 6, 7, 8]), [0, 1, 2, 3, 4]),
+    parts_def = {"body": (A & ~np.isin(lab, [5, 6, 7, 8]), [0, 1, 2, 3, 4, 9, 10, 11, 12]),
                  "armL": (armLd, [2, 5, 6]), "armR": (armRd, [2, 7, 8])}
     s = max(2, H // 380)
     out_parts = {}
@@ -124,8 +148,8 @@ def build(path, det, out_dir, key, root_dir):
         wm = wm[iy, ix]
         wm /= np.maximum(wm.sum(-1, keepdims=True), 1e-6)
         dil = ndimage.binary_dilation(pm, iterations=3)
-        step = max(6, int(H / 95))
-        fine_y = int(head_y) if pname == "body" else -1
+        step = max(6, int(np.sqrt(pm.sum() / 1500.0)))
+        fine_y = int(min(H - 1, max(q["nose"][1], neck[1]) + hn * 0.35)) if (pname == "body" and up[1] < -0.5) else -1
         fs = max(3, step // 2)
         verts = []; vid = {}; tris = []
         def V(x, y):
@@ -190,7 +214,7 @@ def build(path, det, out_dir, key, root_dir):
                     "center": P["center"].tolist(), "s": float(ed / 61.0)}
     figh = float(np.ptp(np.where(A.any(1))[0]))
     hdr = {"size": [W, H], "scale": figh / 1500.0, "joints": {k: [round(float(v[0]), 1), round(float(v[1]), 1)] for k, v in joints.items()},
-           "arm_free": arm_free, "face": face, "mask": key + "_mask.png", "bones": BONES,
+           "arm_free": arm_free, "face": face, "mask": key + "_mask.png", "bones": BONES, "src_md5": det.get("src_md5", ""),
            "parts": [[n, int(p["verts"].shape[0]), int(p["tris"].shape[0])] for n, p in out_parts.items()]}
     hb = json.dumps(hdr, separators=(",", ":")).encode()
     blob = struct.pack("<I", len(hb)) + hb
@@ -198,7 +222,7 @@ def build(path, det, out_dir, key, root_dir):
         blob += p["verts"].tobytes() + p["tris"].tobytes() + p["w"].tobytes()
     open(os.path.join(out_dir, key + ".rig"), "wb").write(gzip.compress(blob, 9))
     # صورة تأكد
-    pal = np.array([[90, 90, 90], [200, 120, 60], [230, 200, 60], [60, 180, 230], [230, 80, 200], [60, 200, 90], [30, 120, 50], [200, 60, 60], [120, 30, 30]], np.uint8)
+    pal = np.array([[90, 90, 90], [200, 120, 60], [230, 200, 60], [60, 180, 230], [230, 80, 200], [60, 200, 90], [30, 120, 50], [200, 60, 60], [120, 30, 30], [80, 120, 230], [40, 60, 160], [170, 90, 220], [100, 40, 140]], np.uint8)
     viz = pal[lab].copy(); viz[~A] = 40
     v = Image.fromarray(viz)
     # نخلط الصورة الأصلية مع الألوان عشان نشوف الوجه، ونرسم العيون والفم

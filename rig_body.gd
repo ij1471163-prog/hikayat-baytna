@@ -49,6 +49,16 @@ static func key_for(path: String) -> String:
 static func has_rig(path: String) -> bool:
 	return FileAccess.file_exists(DIR + key_for(path) + ".rig")
 
+# الهيكل لازم يطابق الصورة (لو انعدلت الصورة وما تجهز هيكلها، نرجع للنسخة البسيطة بدل حركة في غير مكانها)
+static func fits(path: String, tex: Texture2D) -> bool:
+	var key := key_for(path)
+	var d: Dictionary = _cache.get(key, {})
+	if d.is_empty():
+		d = load_rig(key)
+		if d.is_empty(): return false
+		_cache[key] = d
+	return tex != null and int(d["size"][0]) == tex.get_width() and int(d["size"][1]) == tex.get_height()
+
 # ملف الهيكل: مضغوط (gzip) = طول الرأس + رأس JSON + لكل جزء: نقاط uint16 ومثلثات uint16 وأوزان uint8
 static func load_rig(key: String) -> Dictionary:
 	var raw := FileAccess.get_file_as_bytes(DIR + key + ".rig")

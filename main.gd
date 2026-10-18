@@ -2097,7 +2097,7 @@ func refresh_cards():
   if live_on and fx_level > 0 and explore_mode and full_body and not is_steam and not in_shower and npc != "الشبح":
    var rigged: bool = path.ends_with("/20_home_tank_shorts.png") and LayanRig.available()
    # الهيكل التلقائي (كل الجسم مع الرجول) أولاً، بعدين القديم
-   var lb = RigBody.new() if RigBody.has_rig(path) else (LayanRig.new() if rigged else LiveBody.new())
+   var lb = RigBody.new() if (RigBody.has_rig(path) and RigBody.fits(path, tex)) else (LayanRig.new() if rigged else LiveBody.new())
    lb.setup(tex, path)
    lb.scale = Vector2(w / lb.size.x, h / lb.size.y)
    lb.modulate = Color(tint.r, tint.g, tint.b, 1.0)
