@@ -157,6 +157,51 @@ def process_char(im: Image.Image, dst: Path, notes: list):
         notes.append(f"دقة ضعيفة (الارتفاع {im.height}px). ما كبّرناها؛ يفضل صورة أكبر.")
     im.save(dst.with_suffix(".png"), optimize=True)
 
+# ------------------------------------------------------------------ الربط الذكي
+_wl = None
+def world_link():
+    """الأداة الذكية (تعرف الشخصية وتربط الصورة بالعالم). None لو أدواتها مو مثبتة."""
+    global _wl
+    if _wl is None:
+        try:
+            sys.path.insert(0, str(ROOT / "tools" / "world_link"))
+            import link as _link
+            _wl = _link
+        except Exception as e:
+            print("world_link unavailable:", e)
+            _wl = False
+    return _wl or None
+
+AR_ACT = {"cooking": "تطبخ", "cleaning": "تنظف", "laundry": "غسيل", "towel": "بعد الشاور", "sleep": "نوم", "relax": "راحة",
+          "phone": "جوال", "drink": "تشرب", "eat": "تاكل", "read": "تقرا", "exercise": "رياضة", "office": "دوام",
+          "shopping": "تسوق", "serve": "تقدم أكل", "stand": "واقفة"}
+AR_POST = {"stand": "واقفة", "sit": "قاعدة على الأرض", "chair": "قاعدة على كرسي/كنبة", "lie": "منسدحة"}
+PERIODS = ["الصبح", "الظهر", "المغرب", "الليل"]
+
+def smart_place(src, dry, backup_dir, db, notes):
+    """صورة بأي اسم: يقصها، يعرف صاحبتها ووش تسوي، ويحطها في مكانها. يرجع (المسار، وصف القرار) أو يرمي سبب."""
+    wl = world_link()
+    if wl is None: raise ValueError("NONAME")
+    import tempfile
+    im = check_image(src)
+    tmp = Path(tempfile.mkdtemp()) / "x.png"
+    process_char(im, tmp, notes)
+    info = wl.analyze(str(tmp))
+    if not info.get("ok"): raise ValueError(info.get("why", "ما قدرت أحللها."))
+    if info["char_conf"] < wl.MIN_CHAR_CONF:
+        alt = info["near"][0][1] if info.get("near") else "?"
+        raise ValueError(f"مو متأكدة مين الشخصية (أقرب شي: {info['char']} {round(info['char_conf'] * 100)}٪، وأقرب صورة لها لـ{alt}). سمّها باسم الشخصية أو باسم الصورة اللي تبدلها.")
+    dst_rel = wl.place(str(tmp), info, db, dry=dry, backup_dir=str(backup_dir) if backup_dir else None)
+    if info["replace"]:
+        why = f"{info['char']} ({round(info['char_conf'] * 100)}٪) — نسخة معدلة من الصورة القديمة (تشابه {round(info['replace']['sim'] * 100)}٪)، انحطت مكانها بنفس الاسم"
+    else:
+        rooms = "، ".join(info["rooms"])
+        per = "، ".join(PERIODS[i] for i in info["periods"])
+        why = (f"{info['char']} ({round(info['char_conf'] * 100)}٪) — «{info['label']}» — {AR_ACT.get(info['act'], info['act'])} ({round(info['act_conf'] * 100)}٪)، "
+               f"{AR_POST.get(info['post'], info['post'])}. تطلع في: {rooms} | الوقت: {per}")
+    if not dry: src.unlink()
+    return dst_rel, why
+
 # ------------------------------------------------------------------ التشغيل
 def main():
     dry = "--dry-run" in sys.argv
@@ -165,6 +210,12 @@ def main():
     aliases, targets = build_map()
     files = sorted(p for p in INCOMING.rglob("*") if p.is_file() and p.name.lower() not in SKIP and not p.name.startswith("."))
     done, left, used = [], [], {}
+    smart = []
+    wl = None
+    smart_db = {"entries": []}
+    if any(norm(p.stem) not in aliases for p in files if p.suffix.lower() in IMG_EXT):
+        wl = world_link()
+        if wl: smart_db = wl.load_db()
     for src in files:
         rel = src.relative_to(ROOT).as_posix()
         if src.suffix.lower() not in IMG_EXT:
@@ -172,7 +223,18 @@ def main():
         key = norm(src.stem)
         cands = aliases.get(key, [])
         if not cands:
-            left.append((rel, f"ما عرفت وين تروح «{src.stem}». سمّها باسم الملف في اللعبة (مثل cafe أو sara أو 13_pink_hearts_pajamas) أو بالاسم العربي (مثل المقهى، سارة، بيجامة الدباديب).")); continue
+            # اسم غير معروف: الأداة الذكية تشوف الصورة نفسها وتقرر
+            notes = []
+            try:
+                dst_rel, why = smart_place(src, dry, backup_dir, smart_db, notes)
+                smart.append((rel, dst_rel, why))
+                done.append((rel, dst_rel, "شخصية (ربط ذكي)", notes + [why]))
+            except Exception as e:
+                msg = str(e)
+                if msg == "NONAME":
+                    msg = f"ما عرفت وين تروح «{src.stem}». سمّها باسم الملف في اللعبة (مثل cafe أو sara أو 13_pink_hearts_pajamas) أو بالاسم العربي (مثل المقهى، سارة، بيجامة الدباديب)."
+                left.append((rel, msg))
+            continue
         if len(cands) > 1:
             opts = " / ".join(cands)
             left.append((rel, f"الاسم «{src.stem}» يطابق أكثر من مكان: {opts}. أضف بداية مثل bg_ أو pose_ أو nora_pose_.")); continue
@@ -201,8 +263,14 @@ def main():
             done.append((rel, dst_rel, label, notes))
         except Exception as e:
             left.append((rel, f"تعذّرت المعالجة: {e}"))
+    if smart and wl and not dry:
+        wl.save_db(smart_db)
     # التقرير
     lines = ["# تقرير الصور المستلمة", ""]
+    if smart:
+        lines += ["## الربط الذكي (الأداة شافت الصورة وقررت)", "", "| الملف | وين انحطت | القرار |", "|---|---|---|"]
+        lines += [f"| {a} | {b} | {c} |" for a, b, c in smart]
+        lines += ["", "لو قرار غلط (الغرفة أو الوقت أو الوصف) عدّله في `tools/world_link/world_auto.json` قبل الدمج.", ""]
     lines.append(f"تمت معالجة **{len(done)}** صورة، وبقيت **{len(left)}** في incoming/.")
     lines.append("")
     if done:

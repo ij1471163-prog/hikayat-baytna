@@ -8,6 +8,7 @@ var relationship := 50
 var mood := "هادئة"
 var outfit := "توب وشورت البيت"
 const LiveBody := preload("res://live_body.gd")
+const WorldAuto := preload("res://world_auto.gd")
 const LayanRig := preload("res://layan_rig.gd")
 const RigBody := preload("res://rig_body.gd")
 const ROOM_LIGHT := preload("res://room_light.gdshader")
@@ -1849,11 +1850,15 @@ func idle_pose(npc: String) -> Dictionary:
  if not (sprite_focus.is_empty() or sprite_focus == [npc]): return {}
  var loc := location
  if loc == "المنزل": loc = "الصالة"
- if not (loc in WorldData.HOUSE_PLACES): return {}
- var lst: Array = PoseData.LAYAN if npc == "ليان" else (PoseData.NORA if npc == "نورة" else [])
+ var in_house: bool = loc in WorldData.HOUSE_PLACES
+ var lst: Array = []
+ if in_house: lst = (PoseData.LAYAN if npc == "ليان" else (PoseData.NORA if npc == "نورة" else [])).duplicate()
+ # الصور اللي ربطتها الأداة الذكية: لكل شخصية، بالغرفة والوقت المناسب (حتى برا البيت)
+ lst.append_array(WorldAuto.ENTRIES.get(npc, []))
  var cands: Array = []
  for p in lst:
   if sprite_focus.is_empty() and str(p["post"]) == "standcut": continue
+  if p.has("periods") and not (period in (p["periods"] as Array)): continue
   if loc in (p["rooms"] as Array) and ResourceLoader.exists("res://assets/sprites/idle/%s.png" % p["id"]): cands.append(p)
  if cands.is_empty(): return {}
  var rng := RandomNumberGenerator.new()
@@ -3282,6 +3287,11 @@ func touch_react(npc: String, zone: String, held: bool, b: Control, gpos: Vector
  if npc == "ليان" and relationship < 35: key = "cold"
  elif int(_touch_n[npc]) > (9 if npc == "ليان" else 4) and npc != "الشبح": key = "annoyed"
  var arr: Array = lines.get(key, lines.get(zone, lines.get("any", [])))
+ # لو هي مشغولة بشي (تطبخ، تنظف...) أحياناً ترد بكلام يناسبه
+ var tb2 := b as TextureButton
+ if tb2 != null and not key in ["annoyed", "cold"] and npc != "الشبح":
+  var act: String = str(_idle_meta.get(tb2.texture_normal.resource_path, {}).get("act", ""))
+  if act != "" and TouchData.ACT.has(act) and randf() < 0.5: arr = TouchData.ACT[act]
  if arr.is_empty(): arr = lines.get("any", ["..."])
  var line: String = str(arr[randi() % arr.size()])
  var gain := 0

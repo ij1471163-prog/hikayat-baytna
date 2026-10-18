@@ -28,14 +28,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
       - name: Cache background-removal model
         uses: actions/cache@v4
         with:
           path: ~/.u2net
           key: u2net-isnet-general-use-v1
+      - name: Cache AI models (CLIP)
+        uses: actions/cache@v4
+        with:
+          path: tools/world_link/.models
+          key: world-link-models-v1
       - name: Install
-        run: pip install --quiet pillow numpy "rembg[cpu]"
+        run: |
+          pip install --quiet torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install --quiet pillow "numpy<2" "rembg[cpu]" "mediapipe==0.10.14" open_clip_torch scikit-learn scipy
 
       - name: Process incoming images
         run: |
@@ -48,6 +55,10 @@ jobs:
       - name: Validate images and paths
         run: python tools/images/check_assets.py
 
+      - name: Live body for new images
+        if: env.DONE != '0'
+        run: python tools/autorig/run.py
+
       - name: Push review branch
         if: env.DONE != '0'
         run: |
@@ -55,7 +66,7 @@ jobs:
           git config user.name "images-bot"
           git config user.email "images-bot@users.noreply.github.com"
           git checkout -b "$BRANCH"
-          git add -A assets incoming image_backups
+          git add -A assets incoming image_backups world_auto.gd tools/world_link/world_auto.json
           git commit -q -m "Images from incoming/ (run ${{ github.run_id }})"
           git push -q origin "$BRANCH"
           echo "::notice title=review-branch::$BRANCH"
