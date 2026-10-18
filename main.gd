@@ -1843,6 +1843,9 @@ func sprite_path_for(npc: String) -> String:
  if npc == "الشبح":
   return "res://assets/sprites/ghost/body6.png" if int(quest_state.get("ghost", 0)) < 4 else "res://assets/sprites/ghost/body4.png"
  var p: String = str(WorldData.NPCS[npc]["img"]).replace("assets/npcs", "assets/sprites")
+ # صورة كاملة من الراس للرجل (تنحط على أرضية المكان بمقاس صحيح)
+ var fb := "res://assets/sprites/full/%s.png" % p.get_file().get_basename()
+ if ResourceLoader.exists(fb): return fb
  var hd := "res://assets/sprites_hd/%s.png" % p.get_file().get_basename()
  if ResourceLoader.exists(hd): return hd
  return p
