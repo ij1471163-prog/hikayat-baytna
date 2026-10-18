@@ -9,6 +9,7 @@ var mood := "هادئة"
 var outfit := "توب وشورت البيت"
 const LiveBody := preload("res://live_body.gd")
 const LayanRig := preload("res://layan_rig.gd")
+const RigBody := preload("res://rig_body.gd")
 const ROOM_LIGHT := preload("res://room_light.gdshader")
 var _light_cache := {}
 var live_on := true
@@ -2095,7 +2096,7 @@ func refresh_cards():
   # جسم حي: الصورة نفسها تتنفس وتتحرك، والجلد ينضغط تحت الإصبع
   if live_on and fx_level > 0 and explore_mode and full_body and not is_steam and not in_shower and npc != "الشبح":
    var rigged: bool = path.ends_with("/20_home_tank_shorts.png") and LayanRig.available()
-   var lb = LayanRig.new() if rigged else LiveBody.new()
+   var lb = LayanRig.new() if rigged else (RigBody.new() if RigBody.has_rig(path) else LiveBody.new())
    lb.setup(tex, path)
    lb.scale = Vector2(w / lb.size.x, h / lb.size.y)
    lb.modulate = Color(tint.r, tint.g, tint.b, 1.0)
