@@ -144,8 +144,8 @@ init python:
         trans.xzoom = 1.0 + sq * 0.5
         return 0
 
-screen close_mode():
-    modal True
+screen close_mode(test=False):
+    modal (not test)
     add Transform("bg living_room", blur=14)
     add Solid("#00000066")
     $ iw, ih = renpy.image_size("images/layan/%s.png" % layan_outfit)
@@ -231,13 +231,9 @@ label autotest_shots:
             renpy.scene()
             renpy.show("bg living_room")
             renpy.show("layan", at_list=[layan_stand])
-            renpy.show_screen("say", who="ليان", what="«تدري؟ أحب هالأمسيات... حتى لو ما سوينا شي.»")
+            renpy.show_screen("say", who="ليان", what="«تدري؟ أحب هالأمسيات... حتى لو ما سوينا شي. بس إنك جنبي يكفيني، وهذا سطر ثاني عشان نتأكد إن النص يلتف من اليمين صح.»")
         step("02_dialogue", s2)
         renpy.hide_screen("say")
-        def s2b():
-            renpy.show_screen("align_test")
-        step("02b_align", s2b)
-        renpy.hide_screen("align_test")
         def s3():
             renpy.show_screen("choice", items=[_It("تقرّب منها"), _It("اسألها عن يومها"), _It("اقترح عليها لبس"), _It("نام بدري")])
         step("03_choice", s3)
@@ -254,7 +250,7 @@ label autotest_shots:
             close_touch("head", True)
             close_touch("head", True)
             close_touch("shoulder", True)
-            renpy.show_screen("close_mode")
+            renpy.show_screen("close_mode", test=True)
         step("05_close_happy", s5)
         def s6():
             close_touch("waist", True)
@@ -274,13 +270,3 @@ label autotest_shots:
         step("08_outfit", s8)
         renpy.quit()
     return
-
-screen align_test():
-    add Solid("#203040")
-    vbox:
-        xfill True
-        spacing 40
-        ypos 200
-        text "text_align 1.0 xfill: «هذا سطر تجربة للمحاذاة»" xfill True text_align 1.0
-        text "text_align 0.0 xfill: «هذا سطر تجربة للمحاذاة»" xfill True text_align 0.0
-        text "xalign 1.0: «هذا سطر تجربة للمحاذاة»" xalign 1.0

@@ -43,8 +43,8 @@ screen say(who, what):
             window:
                 id "namebox"
                 style "namebox"
-                text who id "who"
-        text what id "what"
+                text who id "who" style "say_label"
+        text what id "what" style "say_dialogue"
     use quick_menu
 
 style window:

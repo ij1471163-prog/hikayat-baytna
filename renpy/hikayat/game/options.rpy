@@ -30,6 +30,7 @@ init python:
     build.classify("**/.**", None)
     build.classify("**/#**", None)
     build.classify("**/thumbs.db", None)
+    build.classify("**.keystore", None)
     build.archive("images", "all")
     build.classify("game/**.png", "images")
     build.classify("game/**.jpg", "images")

@@ -68,16 +68,22 @@ jobs:
             renpy/hikayat/errors.txt
           if-no-files-found: ignore
 
-      - name: Install Android SDK (RAPT)
-        id: sdkinstall
-        continue-on-error: true
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: keys
+          key: renpy-android-keystore-v1
+
+      - name: Signing key (same key every build so updates install over the old one)
         run: |
-          cd sdk/rapt
-          ls
-          PY=../lib/py3-linux-x86_64/python
-          [ -x "$PY" ] || PY=python3
-          printf 'y\ny\ny\ny\nHikayat\n' | PYTHONPATH="$PWD/.." timeout 1500 $PY android.py installsdk > ../../sdk_install.txt 2>&1 || true
-          tail -n 60 ../../sdk_install.txt
+          mkdir -p keys
+          for k in android bundle; do
+            if [ ! -f keys/$k.keystore ]; then
+              keytool -genkey -keystore keys/$k.keystore -alias android -keyalg RSA -keysize 2048 \
+                -keypass android -storepass android -dname "CN=Hikayat Baytna" -validity 20000
+            fi
+            cp keys/$k.keystore renpy/hikayat/$k.keystore
+          done
 
       - name: Build APK
         id: apk
