@@ -76,7 +76,7 @@ jobs:
           ls
           PY=../lib/py3-linux-x86_64/python
           [ -x "$PY" ] || PY=python3
-          printf 'y\ny\ny\ny\nHikayat\n' | timeout 1500 $PY android.py installsdk > ../../sdk_install.txt 2>&1 || true
+          printf 'y\ny\ny\ny\nHikayat\n' | PYTHONPATH="$PWD/.." timeout 1500 $PY android.py installsdk > ../../sdk_install.txt 2>&1 || true
           tail -n 60 ../../sdk_install.txt
 
       - name: Build APK
@@ -84,7 +84,8 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p dist
-          timeout 2400 ./sdk/renpy.sh launcher android_build "$PWD/renpy/hikayat" --destination "$PWD/dist" > apk_build.txt 2>&1 || true
+          ROOT="$PWD"
+          (cd sdk && timeout 2400 ./renpy.sh launcher android_build "$ROOT/renpy/hikayat" --destination "$ROOT/dist") > apk_build.txt 2>&1 || true
           tail -n 80 apk_build.txt
           ls -la dist
 

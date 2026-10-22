@@ -207,7 +207,7 @@ label close_mode:
 ## ===== صور شاشة تلقائية للتجربة (GitHub Actions) =====
 label autotest_shots:
     python:
-        import os
+        import os, traceback
         out = os.environ.get("HIKAYAT_SHOTS")
         class _It(object):
             def __init__(self, c):
@@ -216,41 +216,71 @@ label autotest_shots:
         def shot(name):
             renpy.pause(1.2, hard=True)
             renpy.screenshot(os.path.join(out, name + ".png"))
-        renpy.show_screen("main_menu")
-        shot("01_main_menu")
+        def step(name, fn):
+            try:
+                fn()
+                shot(name)
+            except Exception:
+                with open(os.path.join(out, "errors_" + name + ".txt"), "w") as f:
+                    f.write(traceback.format_exc())
+        def s1():
+            renpy.show_screen("main_menu")
+        step("01_main_menu", s1)
         renpy.hide_screen("main_menu")
-        renpy.scene()
-        renpy.show("bg living_room")
-        renpy.show("layan", at_list=[layan_stand])
-        renpy.show_screen("say", who="ليان", what="«تدري؟ أحب هالأمسيات... حتى لو ما سوينا شي.»")
-        shot("02_dialogue")
+        def s2():
+            renpy.scene()
+            renpy.show("bg living_room")
+            renpy.show("layan", at_list=[layan_stand])
+            renpy.show_screen("say", who="ليان", what="«تدري؟ أحب هالأمسيات... حتى لو ما سوينا شي.»")
+        step("02_dialogue", s2)
         renpy.hide_screen("say")
-        renpy.show_screen("choice", items=[_It("تقرّب منها"), _It("اسألها عن يومها"), _It("اقترح عليها لبس"), _It("نام بدري")])
-        shot("03_choice")
+        def s2b():
+            renpy.show_screen("align_test")
+        step("02b_align", s2b)
+        renpy.hide_screen("align_test")
+        def s3():
+            renpy.show_screen("choice", items=[_It("تقرّب منها"), _It("اسألها عن يومها"), _It("اقترح عليها لبس"), _It("نام بدري")])
+        step("03_choice", s3)
         renpy.hide_screen("choice")
-        renpy.scene()
-        renpy.show("cg tv_night")
-        renpy.show_screen("say", who="ليان", what="«جيت؟ تعال، خليت لك مكان... والفشار بعده حار.»")
-        shot("04_cg")
+        def s4():
+            renpy.scene()
+            renpy.show("cg tv_night")
+            renpy.show_screen("say", who="ليان", what="«جيت؟ تعال، خليت لك مكان... والفشار بعده حار.»")
+        step("04_cg", s4)
         renpy.hide_screen("say")
-        close_reset()
-        close_touch("head", True)
-        close_touch("head", True)
-        close_touch("shoulder", True)
-        renpy.show_screen("close_mode")
-        shot("05_close_happy")
-        close_touch("waist", True)
-        close_touch("feet", True)
-        close_touch("feet", False)
-        shot("06_close_laugh")
+        def s5():
+            renpy.scene()
+            close_reset()
+            close_touch("head", True)
+            close_touch("head", True)
+            close_touch("shoulder", True)
+            renpy.show_screen("close_mode")
+        step("05_close_happy", s5)
+        def s6():
+            close_touch("waist", True)
+            close_touch("feet", True)
+            close_touch("feet", False)
+        step("06_close_laugh", s6)
         renpy.hide_screen("close_mode")
-        renpy.show_screen("save")
-        shot("07_save")
+        def s7():
+            renpy.show_screen("save")
+        step("07_save", s7)
         renpy.hide_screen("save")
-        store.layan_outfit = "06_floral_summer_dress"
-        renpy.scene()
-        renpy.show("bg layan_room")
-        renpy.show("layan", at_list=[layan_stand])
-        shot("08_outfit")
+        def s8():
+            store.layan_outfit = "06_floral_summer_dress"
+            renpy.scene()
+            renpy.show("bg layan_room")
+            renpy.show("layan", at_list=[layan_stand])
+        step("08_outfit", s8)
         renpy.quit()
     return
+
+screen align_test():
+    add Solid("#203040")
+    vbox:
+        xfill True
+        spacing 40
+        ypos 200
+        text "text_align 1.0 xfill: «هذا سطر تجربة للمحاذاة»" xfill True text_align 1.0
+        text "text_align 0.0 xfill: «هذا سطر تجربة للمحاذاة»" xfill True text_align 0.0
+        text "xalign 1.0: «هذا سطر تجربة للمحاذاة»" xalign 1.0
