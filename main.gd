@@ -180,7 +180,7 @@ func make_stat(title: String, color: Color) -> Array:
  box.add_child(bar)
  return [box, bar]
 
-const BG_FILES := {"المنزل":"living_room","المطبخ":"kitchen","الحمام":"bathroom","غرفة النوم":"bedroom","غرفة ليان":"layan_room","غرفة نورة":"nora_room","الصالة":"living_room","غرفة الاسترخاء":"relax_room","غرفة الغسيل":"laundry","متجر الملابس":"clothes_shop","الحديقة":"garden","العمل":"work","المقهى":"cafe","الشاطئ":"beach","النادي الرياضي":"gym","السوبرماركت":"supermarket","الممر":"hallway","المدخل":"entrance","غرفة التخزين":"storage"}
+const BG_FILES := {"المنزل":"living_room","المطبخ":"kitchen","الحمام":"bathroom","غرفة النوم":"bedroom","غرفة ليان":"layan_room","غرفة نورة":"nora_room","الصالة":"living_room","غرفة الاسترخاء":"relax_room","غرفة الغسيل":"laundry","متجر الملابس":"clothes_shop","الحديقة":"garden","العمل":"work","المقهى":"cafe","الشاطئ":"beach","النادي الرياضي":"gym","السوبرماركت":"supermarket","الممر":"entrance","المدخل":"entrance","غرفة التخزين":"relax_room"}
 const PERIOD_TINT := [Color(1, 1, 1), Color(1.0, 1.0, 0.96), Color(1.0, 0.8, 0.66), Color(0.5, 0.55, 0.85)]
 const LAYAN_POSES := {"المطبخ":"cook_pan","غرفة الغسيل":"laundry","الصالة":"sofa_game","العمل":"work","النادي الرياضي":"gym","الشاطئ":"beach_hat","الحديقة":"beach_hat","السوبرماركت":"shopping","المقهى":"cup_pj","الحمام":"towel","غرفة النوم":"pillow_pj","غرفة ليان":"pj_cardigan","غرفة الاسترخاء":"towel"}
 const NORA_POSES := {"المطبخ":"apron","غرفة الغسيل":"laundry","غرفة نورة":"pj1","الصالة":"mop","السوبرماركت":"grocery","المقهى":"cups","العمل":"work","الحمام":"towel"}
