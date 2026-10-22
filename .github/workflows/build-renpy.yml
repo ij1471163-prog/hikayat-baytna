@@ -1,0 +1,92 @@
+name: Build Ren'Py version
+# نسخة Ren'Py: فحص الأخطاء + صور شاشة تلقائية + APK أندرويد
+on:
+  workflow_dispatch:
+  push:
+    branches: [renpy-port]
+    paths:
+      - "renpy/**"
+      - ".github/workflows/build-renpy.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Get Ren'Py SDK
+        run: |
+          VER=$(curl -sL https://www.renpy.org/latest.html | grep -oE 'renpy-[0-9]+\.[0-9]+\.[0-9]+-sdk' | head -1 | sed 's/renpy-//; s/-sdk//')
+          [ -z "$VER" ] && VER=8.3.7
+          echo "Ren'Py $VER"
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          curl -sSLf -o sdk.tar.bz2 "https://www.renpy.org/dl/$VER/renpy-$VER-sdk.tar.bz2"
+          tar xjf sdk.tar.bz2
+          mv "renpy-$VER-sdk" sdk
+          curl -sSLf -o rapt.zip "https://www.renpy.org/dl/$VER/renpy-$VER-rapt.zip" && unzip -q rapt.zip -d sdk || echo "::warning::no rapt zip"
+          ls sdk sdk/rapt || true
+
+      - name: Lint
+        run: |
+          ./sdk/renpy.sh renpy/hikayat lint > lint.txt 2>&1 || true
+          cat lint.txt
+          {
+            echo '### Lint'
+            echo '```'
+            tail -n 60 lint.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Screenshots
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libgl1-mesa-dri > /dev/null
+          mkdir -p shots
+          HIKAYAT_SHOTS="$PWD/shots" timeout 240 xvfb-run -a -s "-screen 0 1920x1080x24" ./sdk/renpy.sh renpy/hikayat > run.txt 2>&1 || true
+          tail -n 40 run.txt
+          ls -la shots
+          cat renpy/hikayat/traceback.txt 2>/dev/null || true
+          cat renpy/hikayat/errors.txt 2>/dev/null || true
+
+      - name: Upload screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renpy-shots
+          path: |
+            shots/
+            lint.txt
+            run.txt
+            renpy/hikayat/traceback.txt
+            renpy/hikayat/errors.txt
+          if-no-files-found: ignore
+
+      - name: Install Android SDK (RAPT)
+        id: sdkinstall
+        continue-on-error: true
+        run: |
+          cd sdk/rapt
+          ls
+          PY=../lib/py3-linux-x86_64/python
+          [ -x "$PY" ] || PY=python3
+          printf 'y\ny\ny\ny\nHikayat\n' | timeout 1500 $PY android.py installsdk 2>&1 | tail -n 60
+
+      - name: Build APK
+        id: apk
+        continue-on-error: true
+        run: |
+          mkdir -p dist
+          timeout 2400 ./sdk/renpy.sh launcher android_build "$PWD/renpy/hikayat" --destination "$PWD/dist" 2>&1 | tail -n 80
+          ls -la dist
+
+      - name: Upload APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HikayatBaytna-RenPy-APK
+          path: dist/*.apk
+          if-no-files-found: warn
