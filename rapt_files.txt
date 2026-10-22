@@ -1,0 +1,11 @@
+android.py
+bin
+blocklist.txt
+buildlib
+bundletool.jar
+hash.txt
+keeplist.txt
+project
+prototype
+templates
+update_translations.py
