@@ -8,6 +8,9 @@ on:
       - "renpy/**"
       - ".github/workflows/build-renpy.yml"
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -73,14 +76,16 @@ jobs:
           ls
           PY=../lib/py3-linux-x86_64/python
           [ -x "$PY" ] || PY=python3
-          printf 'y\ny\ny\ny\nHikayat\n' | timeout 1500 $PY android.py installsdk 2>&1 | tail -n 60
+          printf 'y\ny\ny\ny\nHikayat\n' | timeout 1500 $PY android.py installsdk > ../../sdk_install.txt 2>&1 || true
+          tail -n 60 ../../sdk_install.txt
 
       - name: Build APK
         id: apk
         continue-on-error: true
         run: |
           mkdir -p dist
-          timeout 2400 ./sdk/renpy.sh launcher android_build "$PWD/renpy/hikayat" --destination "$PWD/dist" 2>&1 | tail -n 80
+          timeout 2400 ./sdk/renpy.sh launcher android_build "$PWD/renpy/hikayat" --destination "$PWD/dist" > apk_build.txt 2>&1 || true
+          tail -n 80 apk_build.txt
           ls -la dist
 
       - name: Upload APK
@@ -90,3 +95,18 @@ jobs:
           name: HikayatBaytna-RenPy-APK
           path: dist/*.apk
           if-no-files-found: warn
+
+      - name: Publish results to branch renpy-ci (screenshots and logs)
+        if: always()
+        run: |
+          mkdir -p out && cp -r shots out/ 2>/dev/null || true
+          cp lint.txt run.txt sdk_install.txt apk_build.txt out/ 2>/dev/null || true
+          cp renpy/hikayat/traceback.txt renpy/hikayat/errors.txt out/ 2>/dev/null || true
+          ls dist > out/apk_files.txt 2>/dev/null || true
+          ls sdk/rapt > out/rapt_files.txt 2>/dev/null || true
+          echo "$VER" > out/renpy_version.txt
+          cd out
+          git init -q && git checkout -q -b renpy-ci
+          git config user.name ci && git config user.email ci@users.noreply.github.com
+          git add -A && git commit -qm "Ren'Py CI results ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" renpy-ci
