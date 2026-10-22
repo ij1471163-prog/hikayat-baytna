@@ -6,6 +6,7 @@ default close_line = ""
 default close_good = 0.0
 default react_kind = ""
 default react_t = 0.0
+default close_test = False
 
 init python:
     import math, time
@@ -144,8 +145,8 @@ init python:
         trans.xzoom = 1.0 + sq * 0.5
         return 0
 
-screen close_mode(test=False):
-    modal (not test)
+screen close_mode():
+    modal (not close_test)
     add Transform("bg living_room", blur=14)
     add Solid("#00000066")
     $ iw, ih = renpy.image_size("images/layan/%s.png" % layan_outfit)
@@ -250,7 +251,8 @@ label autotest_shots:
             close_touch("head", True)
             close_touch("head", True)
             close_touch("shoulder", True)
-            renpy.show_screen("close_mode", test=True)
+            store.close_test = True
+            renpy.show_screen("close_mode")
         step("05_close_happy", s5)
         def s6():
             close_touch("waist", True)
