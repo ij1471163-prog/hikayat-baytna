@@ -32,7 +32,7 @@ jobs:
           cd tsr
           python run.py --help > ../out/help.txt 2>&1 || true
           for f in ../photos/*.png; do
-            n=$(basename "$f" .png)
+            n=$(basename "$f" .png); mkdir -p ../out/$n/0
             /usr/bin/time -v python run.py "$f" --device cpu --no-remove-bg --foreground-ratio 0.9 --mc-resolution 256 \
               --model-save-format glb --output-dir ../out/$n > ../out/$n.log 2>&1 || true
             tail -25 ../out/$n.log
