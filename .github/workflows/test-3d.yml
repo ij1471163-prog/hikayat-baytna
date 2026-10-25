@@ -22,7 +22,7 @@ jobs:
           git clone --depth 1 https://github.com/VAST-AI-Research/TripoSR tsr
           sed -i '/torchmcubes/d' tsr/requirements.txt
           pip install -r tsr/requirements.txt > pip.txt 2>&1 || (tail -40 pip.txt; exit 1)
-          pip install cmake scikit-build ninja > /dev/null
+          pip install cmake scikit-build scikit-build-core pybind11 ninja > /dev/null
           pip install --no-build-isolation git+https://github.com/tatsy/torchmcubes.git > mc.txt 2>&1 || (tail -40 mc.txt; exit 1)
           python -c "import torchmcubes; print('mc ok')"
       - name: Convert
