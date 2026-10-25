@@ -1,0 +1,43 @@
+2026-10-25 01:28:48,163 - INFO - Initializing model ...
+Downloading config.yaml:   0%|          | 0.00/987 [00:00<?, ?B/s]Downloading config.yaml: 100%|██████████| 987/987 [00:00<00:00, 6.67MB/s]
+Downloading model.ckpt:   0%|          | 0.00/1.68G [00:00<?, ?B/s]Downloading model.ckpt:   2%|▏         | 31.5M/1.68G [00:00<00:06, 245MB/s]Downloading model.ckpt:   4%|▍         | 62.9M/1.68G [00:00<00:06, 255MB/s]Downloading model.ckpt:   6%|▋         | 105M/1.68G [00:00<00:05, 299MB/s] Downloading model.ckpt:   8%|▊         | 136M/1.68G [00:00<00:05, 287MB/s]Downloading model.ckpt:  10%|█         | 168M/1.68G [00:00<00:05, 282MB/s]Downloading model.ckpt:  13%|█▎        | 220M/1.68G [00:00<00:04, 351MB/s]Downloading model.ckpt:  16%|█▌        | 262M/1.68G [00:00<00:04, 290MB/s]Downloading model.ckpt:  19%|█▉        | 315M/1.68G [00:01<00:04, 334MB/s]Downloading model.ckpt:  23%|██▎       | 377M/1.68G [00:01<00:03, 403MB/s]Downloading model.ckpt:  26%|██▌       | 430M/1.68G [00:01<00:03, 376MB/s]Downloading model.ckpt:  28%|██▊       | 472M/1.68G [00:01<00:04, 297MB/s]Downloading model.ckpt:  31%|███▏      | 524M/1.68G [00:01<00:03, 341MB/s]Downloading model.ckpt:  34%|███▍      | 566M/1.68G [00:01<00:03, 326MB/s]Downloading model.ckpt:  36%|███▋      | 608M/1.68G [00:01<00:03, 295MB/s]Downloading model.ckpt:  40%|████      | 671M/1.68G [00:02<00:02, 362MB/s]Downloading model.ckpt:  44%|████▍     | 734M/1.68G [00:02<00:02, 419MB/s]Downloading model.ckpt:  47%|████▋     | 786M/1.68G [00:02<00:02, 368MB/s]Downloading model.ckpt:  49%|████▉     | 828M/1.68G [00:02<00:02, 360MB/s]Downloading model.ckpt:  53%|█████▎    | 881M/1.68G [00:02<00:02, 395MB/s]Downloading model.ckpt:  56%|█████▋    | 944M/1.68G [00:02<00:01, 442MB/s]Downloading model.ckpt:  59%|█████▉    | 996M/1.68G [00:02<00:01, 377MB/s]Downloading model.ckpt:  62%|██████▏   | 1.04G/1.68G [00:03<00:01, 321MB/s]Downloading model.ckpt:  66%|██████▌   | 1.10G/1.68G [00:03<00:01, 369MB/s]Downloading model.ckpt:  68%|██████▊   | 1.14G/1.68G [00:03<00:01, 342MB/s]Downloading model.ckpt:  72%|███████▏  | 1.21G/1.68G [00:03<00:01, 399MB/s]Downloading model.ckpt:  75%|███████▌  | 1.26G/1.68G [00:03<00:01, 352MB/s]Downloading model.ckpt:  78%|███████▊  | 1.30G/1.68G [00:03<00:01, 344MB/s]Downloading model.ckpt:  81%|████████▏ | 1.36G/1.68G [00:03<00:00, 378MB/s]Downloading model.ckpt:  84%|████████▍ | 1.41G/1.68G [00:04<00:00, 321MB/s]Downloading model.ckpt:  86%|████████▋ | 1.45G/1.68G [00:04<00:00, 336MB/s]Downloading model.ckpt:  89%|████████▉ | 1.50G/1.68G [00:04<00:00, 367MB/s]Downloading model.ckpt:  92%|█████████▏| 1.54G/1.68G [00:04<00:00, 328MB/s]Downloading model.ckpt:  94%|█████████▍| 1.58G/1.68G [00:04<00:00, 326MB/s]Downloading model.ckpt:  98%|█████████▊| 1.64G/1.68G [00:04<00:00, 352MB/s]Downloading model.ckpt: 100%|██████████| 1.68G/1.68G [00:04<00:00, 313MB/s]Downloading model.ckpt: 100%|██████████| 1.68G/1.68G [00:04<00:00, 343MB/s]
+/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+The cache for model files in Transformers v4.22.0 has been updated. Migrating your old cache. This is a one-time only operation. You can interrupt this and resume the migration later on by calling `transformers.utils.move_cache()`.
+0it [00:00, ?it/s]0it [00:00, ?it/s]
+/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+Downloading config.json:   0%|          | 0.00/454 [00:00<?, ?B/s]Downloading config.json: 100%|██████████| 454/454 [00:00<00:00, 3.29MB/s]
+2026-10-25 01:28:56,595 - INFO - Initializing model finished in 8431.75ms.
+2026-10-25 01:28:56,595 - INFO - Processing images ...
+2026-10-25 01:28:56,603 - INFO - Processing images finished in 7.65ms.
+2026-10-25 01:28:56,603 - INFO - Running image 1/1 ...
+2026-10-25 01:28:56,603 - INFO - Running model ...
+2026-10-25 01:29:16,156 - INFO - Running model finished in 19553.19ms.
+2026-10-25 01:29:16,156 - INFO - Extracting mesh ...
+2026-10-25 01:29:47,635 - INFO - Extracting mesh finished in 31478.91ms.
+2026-10-25 01:29:47,635 - INFO - Exporting mesh ...
+2026-10-25 01:29:47,641 - INFO - Exporting mesh finished in 5.36ms.
+	Command being timed: "python run.py ../photos/layan_dress.png --device cpu --no-remove-bg --foreground-ratio 0.9 --mc-resolution 256 --model-save-format glb --output-dir ../out/layan_dress"
+	User time (seconds): 107.85
+	System time (seconds): 3.02
+	Percent of CPU this job got: 177%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 1:02.59
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 3742280
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 3
+	Minor (reclaiming a frame) page faults: 327104
+	Voluntary context switches: 15280
+	Involuntary context switches: 1219
+	Swaps: 0
+	File system inputs: 1224
+	File system outputs: 3278272
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

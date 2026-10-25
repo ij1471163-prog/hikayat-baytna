@@ -1,0 +1,47 @@
+usage: run.py [-h] [--device DEVICE]
+              [--pretrained-model-name-or-path PRETRAINED_MODEL_NAME_OR_PATH]
+              [--chunk-size CHUNK_SIZE] [--mc-resolution MC_RESOLUTION]
+              [--no-remove-bg] [--foreground-ratio FOREGROUND_RATIO]
+              [--output-dir OUTPUT_DIR] [--model-save-format {obj,glb}]
+              [--bake-texture] [--texture-resolution TEXTURE_RESOLUTION]
+              [--render]
+              image [image ...]
+
+positional arguments:
+  image                 Path to input image(s).
+
+options:
+  -h, --help            show this help message and exit
+  --device DEVICE       Device to use. If no CUDA-compatible device is found,
+                        will fallback to 'cpu'. Default: 'cuda:0'
+  --pretrained-model-name-or-path PRETRAINED_MODEL_NAME_OR_PATH
+                        Path to the pretrained model. Could be either a
+                        huggingface model id is or a local path. Default:
+                        'stabilityai/TripoSR'
+  --chunk-size CHUNK_SIZE
+                        Evaluation chunk size for surface extraction and
+                        rendering. Smaller chunk size reduces VRAM usage but
+                        increases computation time. 0 for no chunking.
+                        Default: 8192
+  --mc-resolution MC_RESOLUTION
+                        Marching cubes grid resolution. Default: 256
+  --no-remove-bg        If specified, the background will NOT be automatically
+                        removed from the input image, and the input image
+                        should be an RGB image with gray background and
+                        properly-sized foreground. Default: false
+  --foreground-ratio FOREGROUND_RATIO
+                        Ratio of the foreground size to the image size. Only
+                        used when --no-remove-bg is not specified. Default:
+                        0.85
+  --output-dir OUTPUT_DIR
+                        Output directory to save the results. Default:
+                        'output/'
+  --model-save-format {obj,glb}
+                        Format to save the extracted mesh. Default: 'obj'
+  --bake-texture        Bake a texture atlas for the extracted mesh, instead
+                        of vertex colors
+  --texture-resolution TEXTURE_RESOLUTION
+                        Texture atlas resolution, only useful with --bake-
+                        texture. Default: 2048
+  --render              If specified, save a NeRF-rendered video. Default:
+                        false

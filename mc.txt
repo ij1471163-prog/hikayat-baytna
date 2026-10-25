@@ -1,0 +1,24 @@
+Collecting git+https://github.com/tatsy/torchmcubes.git
+  Cloning https://github.com/tatsy/torchmcubes.git to /tmp/pip-req-build-xcjfimzs
+  Running command git clone --filter=blob:none --quiet https://github.com/tatsy/torchmcubes.git /tmp/pip-req-build-xcjfimzs
+  Resolved https://github.com/tatsy/torchmcubes.git to commit a9ac95aa329957ba646e7bb057f825f5dfa77f38
+  Preparing metadata (pyproject.toml): started
+  Preparing metadata (pyproject.toml): finished with status 'done'
+Requirement already satisfied: torch==2.14.* in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torchmcubes==0.1.0) (2.14.1+cpu)
+Requirement already satisfied: filelock in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (3.32.3)
+Requirement already satisfied: typing-extensions>=4.10.0 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (4.16.0)
+Requirement already satisfied: setuptools>=77.0.3 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (84.2.1)
+Requirement already satisfied: sympy>=1.13.3 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (1.14.0)
+Requirement already satisfied: networkx>=2.5.1 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (3.4.2)
+Requirement already satisfied: jinja2 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (3.1.6)
+Requirement already satisfied: fsspec>=0.8.5 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from torch==2.14.*->torchmcubes==0.1.0) (2026.7.0)
+Requirement already satisfied: mpmath<1.4,>=1.1.0 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from sympy>=1.13.3->torch==2.14.*->torchmcubes==0.1.0) (1.3.0)
+Requirement already satisfied: MarkupSafe>=2.0 in /opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages (from jinja2->torch==2.14.*->torchmcubes==0.1.0) (2.1.5)
+Building wheels for collected packages: torchmcubes
+  Building wheel for torchmcubes (pyproject.toml): started
+  Building wheel for torchmcubes (pyproject.toml): finished with status 'done'
+  Created wheel for torchmcubes: filename=torchmcubes-0.1.0-cp310-cp310-linux_x86_64.whl size=98291 sha256=006b5b00bc47e878bf558d93f3d3058921e896cede48c9efb174cb25c7617186
+  Stored in directory: /tmp/pip-ephem-wheel-cache-i731m_ar/wheels/07/5f/20/0199858e9f96d327760cf61044996e8ed132513df3544fd601
+Successfully built torchmcubes
+Installing collected packages: torchmcubes
+Successfully installed torchmcubes-0.1.0

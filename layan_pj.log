@@ -1,0 +1,38 @@
+2026-10-25 01:29:50,768 - INFO - Initializing model ...
+/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/transformers/utils/generic.py:441: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+/opt/hostedtoolcache/Python/3.10.22/x64/lib/python3.10/site-packages/transformers/utils/generic.py:309: FutureWarning: `torch.utils._pytree._register_pytree_node` is deprecated. Please use `torch.utils._pytree.register_pytree_node` instead.
+  _torch_pytree._register_pytree_node(
+2026-10-25 01:29:54,046 - INFO - Initializing model finished in 3277.24ms.
+2026-10-25 01:29:54,046 - INFO - Processing images ...
+2026-10-25 01:29:54,053 - INFO - Processing images finished in 7.11ms.
+2026-10-25 01:29:54,053 - INFO - Running image 1/1 ...
+2026-10-25 01:29:54,053 - INFO - Running model ...
+2026-10-25 01:30:13,524 - INFO - Running model finished in 19470.82ms.
+2026-10-25 01:30:13,524 - INFO - Extracting mesh ...
+2026-10-25 01:30:45,642 - INFO - Extracting mesh finished in 32118.32ms.
+2026-10-25 01:30:45,643 - INFO - Exporting mesh ...
+2026-10-25 01:30:45,647 - INFO - Exporting mesh finished in 4.83ms.
+	Command being timed: "python run.py ../photos/layan_pj.png --device cpu --no-remove-bg --foreground-ratio 0.9 --mc-resolution 256 --model-save-format glb --output-dir ../out/layan_pj"
+	User time (seconds): 108.26
+	System time (seconds): 1.49
+	Percent of CPU this job got: 188%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:58.18
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 3741276
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 343540
+	Voluntary context switches: 88
+	Involuntary context switches: 710
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 1624
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0
