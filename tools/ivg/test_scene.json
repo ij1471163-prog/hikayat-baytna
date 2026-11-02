@@ -1,0 +1,30 @@
+{"id":"test-mochi","title":"اختبار","who":"موتشي","start":"idle","fade":0.1,"hintAfter":1,
+ "vars":{"mood":50,"trust":0},
+ "meters":[{"var":"mood","label":"المزاج","max":100,"color":"#ff8fb1"},{"var":"trust","label":"الثقة","max":10,"color":"#ffd75a"}],
+ "game":{"rewards":[{"var":"mood","per":0.1,"stat":"relationship"},{"var":"trust","per":2,"stat":"rel"}],"max":10,"fx":{"energy":-3}},
+ "on_start":[{"say":"هلا! المسني","time":1.0}],
+ "clips":{
+  "idle":{"src":"idle.mp4","loop":true,"hotspots":[
+    {"id":"head","x":0.5,"y":0.39,"r":0.11,"hint":true,"on":{
+      "tap":[{"random":[[{"play":"happy"},{"say":"هيهي"},{"add":{"mood":3}}],[{"play":["laugh","laugh2"]},{"add":{"mood":2}}]]}],
+      "hold":[{"play":"happy"},{"say":"مرتاح"},{"add":{"mood":6,"trust":1}},{"fx":"pulse"}]}},
+    {"id":"belly","x":0.35,"y":0.62,"w":0.3,"h":0.14,"hint":true,"on":{
+      "rub":[{"play":["laugh","laugh2"]},{"say":"ههه"},{"add":{"mood":4}}],
+      "tap":[{"play":"shy"},{"say":"بطني مو طبل!"}]}}],
+   "on":{"swipe-up":[{"if":"mood >= 55","then":[{"play":"talk"}],"else":[{"say":"مو مزاجي"},{"fx":"shake"}]}],
+         "double":[{"play":"jump"}]}},
+  "happy":{"src":"happy.ogv","then":"idle","inherit":"idle"},
+  "laugh":{"src":"laugh.ogv","then":"idle","inherit":"idle"},
+  "laugh2":{"src":"laugh2.ogv","then":"idle","inherit":"idle"},
+  "shy":{"src":"shy.ogv","then":"idle","inherit":"idle"},
+  "annoyed":{"src":"annoyed.ogv","then":"idle"},
+  "talk":{"src":"talk.ogv","then":"idle","events":[{"at":0.2,"do":[{"say":"تدري؟ مليت"}]}],
+    "pause":[{"at":1.0,"prompt":"نطلع نتمشى؟","timeout":6,"default":"مو الحين","choices":[
+      {"text":"إيه، يلا!","do":[{"add":{"mood":8,"trust":2}},{"say":"ياااي!"}],"go":"happy"},
+      {"text":"مو الحين","do":[{"say":"طيب"}],"go":"shy"},
+      {"text":"لا مالي خلق","if":"trust < 3","do":[{"add":{"mood":-10}}],"go":"annoyed"}]}]},
+  "jump":{"src":"jump.ogv","qte":[{"from":0.5,"to":1.6,"gesture":"tap","label":"امسكه!","x":0.5,"y":0.3,"success":[{"play":"catch"},{"say":"مسكتني!"},{"add":{"trust":1,"mood":5}}],"fail":[]}],
+    "on_end":[{"say":"آخ"},{"add":{"mood":-5}}],"then":"fall"},
+  "catch":{"src":"catch.ogv","then":"idle"},
+  "fall":{"src":"fall.ogv","then":"idle"}
+ }}

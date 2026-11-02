@@ -1,0 +1,56 @@
+{
+ "id": "example",
+ "title": "ترحيب عند الباب",
+ "who": "الشخصية",
+ "start": "idle",
+ "fade": 0.12,
+ "hintAfter": 4,
+ "vars": {"mood": 50, "trust": 0},
+ "meters": [
+  {"var": "mood", "label": "المزاج", "max": 100, "color": "#ff8fb1"},
+  {"var": "trust", "label": "الثقة", "max": 10, "color": "#ffd75a"}
+ ],
+ "game": {
+  "max": 8,
+  "fx": {"energy": -3},
+  "rewards": [
+   {"var": "mood", "per": 0.1, "stat": "relationship"},
+   {"var": "trust", "per": 2, "stat": "rel"}
+  ]
+ },
+ "on_start": [{"say": "اضغط على اليد للسلام، أو اسحب لفوق نسولف.", "time": 3.5}],
+ "clips": {
+  "idle": {
+   "src": "idle.mp4",
+   "loop": true,
+   "hotspots": [
+    {"id": "hand", "x": 0.62, "y": 0.58, "r": 0.07, "hint": true,
+     "on": {
+      "tap": [{"play": "happy"}, {"say": ["أهلًا!", "حيّاك!"]}, {"add": {"mood": 4}}],
+      "hold": [{"play": "happy"}, {"say": "يا هلا فيك"}, {"add": {"mood": 6, "trust": 1}}, {"fx": "pulse"}]
+     }},
+    {"id": "head", "x": 0.5, "y": 0.3, "r": 0.09, "hint": true,
+     "on": {"tap": [{"play": "shy"}, {"add": {"mood": 2}}]}}
+   ],
+   "on": {
+    "swipe-up": [
+     {"if": "mood >= 55", "then": [{"play": "talk"}],
+      "else": [{"say": "مو مزاجي أسولف... دلّعني شوي أول."}, {"fx": "shake"}]}
+    ]
+   }
+  },
+  "happy": {"src": "happy.mp4", "then": "idle", "inherit": "idle"},
+  "shy": {"src": "shy.mp4", "then": "idle", "inherit": "idle"},
+  "talk": {
+   "src": "talk.mp4",
+   "then": "idle",
+   "pause": [{
+    "at": 2.0, "prompt": "نطلع نتمشى؟", "timeout": 6, "default": "مو الحين",
+    "choices": [
+     {"text": "إيه، يلا!", "do": [{"add": {"mood": 8, "trust": 2}}, {"say": "ياااي!"}], "go": "happy"},
+     {"text": "مو الحين", "do": [{"say": "طيب... بكرة؟"}], "go": "shy"}
+    ]
+   }]
+  }
+ }
+}

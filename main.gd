@@ -2286,11 +2286,13 @@ func talk_to(npc: String):
   interact()
   choice("روتين ليان اليومي", layan_routine)
   choice("أعطها هدية", func(): gift_menu("ليان"))
+  add_interactive_choice(npc)
   add_video_choice(npc)
   choice("رجوع", func(): go(location))
  else:
   character_scene(npc)
   choice("أعطه هدية", func(): gift_menu(npc))
+  add_interactive_choice(npc)
   add_video_choice(npc)
 
 # ================= فيديوهات الشخصيات (ترفعها في incoming/videos/<الشخصية>/) =================
@@ -2316,6 +2318,91 @@ func video_menu(npc: String):
   var path: String = vids[i]
   choice("فيديو %d" % (i + 1), func(): play_video(path, func(): video_menu(npc)))
  choice("رجوع", func(): talk_to(npc))
+
+# ================= مشاهد فيديو تفاعلية (محرك IVG: ivg/ivg_engine.gd) =================
+# ترفع المشهد في incoming/interactive/<الشخصية>/<اسم_المشهد>/ (scene.json + المقاطع) وتتحول وتتركب تلقائيًا. الشرح: incoming/interactive/README-AR.md
+const IvgEngine = preload("res://ivg/ivg_engine.gd")
+var _ivg_box: Control = null
+
+func npc_interactive(npc: String) -> Array:
+ var scr = load("res://ivg_data.gd")
+ if scr == null: return []
+ var out: Array = []
+ for p in (scr.SCENES as Dictionary).get(npc, []):
+  if FileAccess.file_exists(str(p)): out.append(str(p))
+ return out
+
+func ivg_read(path: String) -> Dictionary:
+ var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+ if typeof(data) == TYPE_DICTIONARY and data.has("clips") and data.has("start"): return data
+ return {}
+
+func add_interactive_choice(npc: String):
+ var sc := npc_interactive(npc)
+ if sc.is_empty(): return
+ var nm := "سلمى" if npc == "الشبح" else npc
+ choice("لقاء تفاعلي مع %s (%d)" % [nm, sc.size()], func(): interactive_menu(npc))
+
+func interactive_menu(npc: String):
+ var nm := "سلمى" if npc == "الشبح" else npc
+ say(nm, "اختر مشهدًا. المس الشاشة، اضغط مطوّلًا، امسح أو اسحب وشوف ردة فعلها.")
+ var i := 0
+ for p in npc_interactive(npc):
+  i += 1
+  var path: String = p
+  var data := ivg_read(path)
+  if data.is_empty(): continue
+  choice(str(data.get("title", "مشهد %d" % i)), func(): play_interactive(path, npc, func(): interactive_menu(npc)))
+ choice("رجوع", func(): talk_to(npc))
+
+func play_interactive(path: String, npc: String, after: Callable = Callable()):
+ var data := ivg_read(path)
+ if data.is_empty():
+  note.text = "ما قدرت أفتح المشهد التفاعلي."
+  return
+ if is_instance_valid(_ivg_box): _ivg_box.queue_free()
+ var e = IvgEngine.new()
+ e.setup(data, path.get_base_dir() + "/", {"muted": false})
+ e.finished.connect(func(res: Dictionary):
+  if is_instance_valid(e): e.queue_free()
+  _ivg_box = null
+  var msg := ivg_apply_rewards(data, res, npc)
+  if msg != "": note.text = msg
+  update_status()
+  if check_scenes(): return
+  if after.is_valid(): after.call())
+ add_child(e)
+ _ivg_box = e
+
+# يحوّل تغيّر عدادات المشهد (المزاج، الثقة...) لتأثير على اللعبة. يتعرّف من "game" داخل scene.json:
+#   "game": {"max": 10, "fx": {"energy": -3}, "rewards": [{"var": "mood", "per": 0.1, "stat": "relationship"}, {"var": "trust", "per": 2, "stat": "rel"}]}
+# stat: relationship (علاقة ليان)، rel (علاقة الشخصية نفسها)، money، energy، house_cleanliness، laundry
+func ivg_apply_rewards(data: Dictionary, res: Dictionary, npc: String) -> String:
+ var g: Dictionary = data.get("game", {})
+ if g.is_empty(): return ""
+ var fx: Dictionary = {}
+ var cap := int(g.get("max", 10))
+ var now_v: Dictionary = res.get("vars", {})
+ var v0: Dictionary = res.get("start_vars", {})
+ for k in g.get("fx", {}):
+  fx[k] = int(g["fx"][k])
+ for r in g.get("rewards", []):
+  var delta := float(now_v.get(r.get("var", ""), 0)) - float(v0.get(r.get("var", ""), 0))
+  var amt := clampi(int(round(delta * float(r.get("per", 1)))), -cap, cap)
+  var stat := str(r.get("stat", "relationship"))
+  if stat == "rel":
+   var d: Dictionary = fx.get("rel", {})
+   d[npc] = int(d.get(npc, 0)) + amt
+   fx["rel"] = d
+  else:
+   fx[stat] = int(fx.get(stat, 0)) + amt
+ apply_fx(fx)
+ var parts: Array = []
+ if fx.has("relationship") and int(fx["relationship"]) != 0: parts.append("علاقة ليان %+d" % int(fx["relationship"]))
+ if fx.has("rel") and int((fx["rel"] as Dictionary).get(npc, 0)) != 0: parts.append("علاقتك بـ%s %+d" % [npc, int(fx["rel"][npc])])
+ if fx.has("energy") and int(fx["energy"]) != 0: parts.append("الطاقة %+d" % int(fx["energy"]))
+ if fx.has("money") and int(fx["money"]) != 0: parts.append("الرصيد %+d" % int(fx["money"]))
+ return "انتهى المشهد. " + "، ".join(parts) if not parts.is_empty() else ""
 
 var _video_box: Control = null
 func play_video(path: String, after: Callable = Callable()):
