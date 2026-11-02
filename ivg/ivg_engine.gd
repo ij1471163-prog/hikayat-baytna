@@ -30,6 +30,68 @@ const PANEL := Color(0.07, 0.047, 0.063, 0.82)
 const MUTED := Color("#cdbfc6")
 const SLOP := 12.0
 
+# شريحة عرض: إما مشغّل فيديو أو صورة ثابتة (ساعة افتراضية تعوّض الفيديو).
+# كذا نفس المشهد يشتغل بصور اللعبة الحين، وتبدّل الصورة بفيديو بعدين بدون تغيير ثاني.
+class Slot extends RefCounted:
+	var video: VideoStreamPlayer
+	var img: TextureRect
+	var is_img := false
+	var t0 := 0.0
+	var dur := 0.0          # مدة الصورة بالثواني (0 = بلا نهاية)
+	var paused_at := -1.0
+	var stopped := false
+
+	func node() -> Control:
+		return img if is_img else video
+
+	func _now() -> float:
+		return Time.get_ticks_msec() / 1000.0
+
+	func pos() -> float:
+		if not is_img: return video.stream_position
+		if stopped: return 0.0
+		if paused_at >= 0.0: return paused_at
+		return _now() - t0
+
+	func is_playing() -> bool:
+		if not is_img: return video.is_playing()
+		if stopped: return false
+		return dur <= 0.0 or pos() < dur
+
+	func is_paused() -> bool:
+		return video.paused if not is_img else paused_at >= 0.0
+
+	func set_paused(p: bool):
+		if not is_img:
+			video.paused = p
+		elif p and paused_at < 0.0:
+			paused_at = _now() - t0
+		elif not p and paused_at >= 0.0:
+			t0 = _now() - paused_at
+			paused_at = -1.0
+
+	func stop():
+		if is_img: stopped = true
+		else: video.stop()
+
+	func show_kind(image: bool):
+		is_img = image
+		img.visible = image
+		video.visible = not image
+
+	func start_image(tex: Texture2D, duration: float):
+		img.texture = tex
+		t0 = _now()
+		dur = duration
+		paused_at = -1.0
+		stopped = false
+
+	func size_px() -> Vector2:
+		if is_img:
+			return img.texture.get_size() if img.texture != null else Vector2.ZERO
+		var t := video.get_video_texture()
+		return t.get_size() if t != null else Vector2.ZERO
+
 var scene: Dictionary = {}
 var base := ""
 var vars: Dictionary = {}
@@ -39,9 +101,11 @@ var debug_hotspots := false
 var accent := Color("#ff8fb1")
 
 var _stage: Control
-var _pa: VideoStreamPlayer
-var _pb: VideoStreamPlayer
-var _active: VideoStreamPlayer
+var _sa: Slot
+var _sb: Slot
+var _active: Slot
+var _bg_tex: TextureRect
+var _bg_path := ""
 var _debug: Control
 var _hint_layer: Control
 var _touch_layer: Control
@@ -102,13 +166,22 @@ func _full(c: Control, ignore := true):
 	c.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if ignore: c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
-func _make_player() -> VideoStreamPlayer:
+func _make_slot() -> Slot:
+	var sl := Slot.new()
 	var p := VideoStreamPlayer.new()
 	p.expand = true
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	p.modulate.a = 0.0
-	p.finished.connect(_on_player_finished.bind(p))
-	return p
+	sl.video = p
+	var t := TextureRect.new()
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_SCALE
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	t.modulate.a = 0.0
+	t.visible = false
+	sl.img = t
+	p.finished.connect(_on_player_finished.bind(sl))
+	return sl
 
 func _ready():
 	_full(self, false)
@@ -118,14 +191,20 @@ func _ready():
 	bg.color = BG
 	_full(bg)
 	add_child(bg)
+	_bg_tex = TextureRect.new()
+	_full(_bg_tex)
+	_bg_tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_bg_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	add_child(_bg_tex)
 	_stage = Control.new()
 	_full(_stage)
 	add_child(_stage)
-	_pa = _make_player()
-	_pb = _make_player()
-	_stage.add_child(_pa)
-	_stage.add_child(_pb)
-	_active = _pa
+	_sa = _make_slot()
+	_sb = _make_slot()
+	for sl in [_sa, _sb]:
+		_stage.add_child(sl.video)
+		_stage.add_child(sl.img)
+	_active = _sa
 	_debug = Control.new()
 	_full(_debug)
 	_debug.draw.connect(_debug_draw)
@@ -266,8 +345,8 @@ func _load_stream(path: String):
 
 func _video_size() -> Vector2:
 	if _active != null:
-		var t := _active.get_video_texture()
-		if t != null and t.get_size().x > 0: return t.get_size()
+		var sz := _active.size_px()
+		if sz.x > 0: return sz
 	return Vector2(float(scene.get("width", 16)), float(scene.get("height", 9)))
 
 # مكان الفيديو الفعلي داخل الشاشة (contain)
@@ -286,9 +365,10 @@ func _layout_players():
 	var r := content_rect()
 	if r == _last_rect: return
 	_last_rect = r
-	for p in [_pa, _pb]:
-		p.position = r.position
-		p.size = r.size
+	for sl in [_sa, _sb]:
+		for n in [sl.video, sl.img]:
+			n.position = r.position
+			n.size = r.size
 
 # ------------------------------------------------------------------ الواجهة: كلام، إشعارات، عدادات
 func say(text: String, who := "", time := 0.0):
@@ -359,6 +439,36 @@ func _limit(k: String):
 			vars[k] = clampf(float(vars[k]), float(m.get("min", 0)), float(m.get("max", 100)))
 
 # ------------------------------------------------------------------ تشغيل المقاطع
+func _is_image_path(path: String) -> bool:
+	var l := path.to_lower()
+	for e in [".png", ".jpg", ".jpeg", ".webp", ".svg", ".bmp"]:
+		if l.ends_with(e): return true
+	return false
+
+func _load_texture(path: String):
+	if _streams.has(path): return _streams[path]
+	var tex = null
+	if ResourceLoader.exists(path):
+		var r = load(path)
+		if r is Texture2D: tex = r
+	elif FileAccess.file_exists(path):
+		var im := Image.load_from_file(path)
+		if im != null and not im.is_empty(): tex = ImageTexture.create_from_image(im)
+	if tex != null: _streams[path] = tex
+	return tex
+
+# خلفية ثابتة خلف الشخصية (على مستوى المشهد "bg" أو لكل مقطع)
+func _set_bg(path: String):
+	if path == _bg_path: return
+	_bg_path = path
+	if path == "":
+		_bg_tex.texture = null
+		return
+	var t = _load_texture(_resolve(path))
+	if t != null: _bg_tex.texture = t
+	else: push_warning("IVG: ما لقيت الخلفية: " + path)
+
+# يشغّل مقطع: src يقبل فيديو (.ogv/.mp4...) أو صورة (.png/.jpg...). الصورة تعتبر مقطع بمدة "duration" (الافتراضي 2 ثانية، أو بلا نهاية مع loop).
 func play(clip_name: String) -> void:
 	var clip: Dictionary = _clips().get(clip_name, {})
 	if clip.is_empty():
@@ -369,48 +479,60 @@ func play(clip_name: String) -> void:
 		push_warning("IVG: المقطع بدون src: " + clip_name)
 		return
 	var src := _resolve(str(src_name))
-	var stream = _load_stream(src)
+	var as_img := _is_image_path(src)
+	var stream = _load_texture(src) if as_img else _load_stream(src)
 	if stream == null:
-		push_warning("IVG: ما لقيت الفيديو: " + src)
+		push_warning("IVG: ما لقيت الملف: " + src)
 		return
 	_play_token += 1
 	var token := _play_token
-	var nxt: VideoStreamPlayer = _pb if _active == _pa else _pa
-	var prev: VideoStreamPlayer = _active
+	var nxt: Slot = _sb if _active == _sa else _sa
+	var prev: Slot = _active
 	_hide_choices()
 	nxt.stop()
-	nxt.stream = stream
-	nxt.loop = bool(clip.get("loop", false))
-	nxt.volume_db = -80.0 if muted else 0.0
-	nxt.paused = false
-	nxt.modulate.a = 0.0
-	nxt.play()
-	# ننتظر أول إطار عشان نعرف مقاس الفيديو الحقيقي
-	var tries := 0
-	while tries < 40 and token == _play_token:
+	nxt.show_kind(as_img)
+	nxt.video.modulate.a = 0.0
+	nxt.img.modulate.a = 0.0
+	if as_img:
+		nxt.start_image(stream, float(clip.get("duration", 0.0 if bool(clip.get("loop", false)) else 2.0)))
 		await get_tree().process_frame
-		var t := nxt.get_video_texture()
-		if t != null and t.get_size().x > 0 and nxt.stream_position > 0.0: break
-		tries += 1
+	else:
+		nxt.video.stop()
+		nxt.video.stream = stream
+		nxt.video.loop = bool(clip.get("loop", false))
+		nxt.video.volume_db = -80.0 if muted else 0.0
+		nxt.video.paused = false
+		nxt.video.play()
+		# ننتظر أول إطار عشان نعرف مقاس الفيديو الحقيقي
+		var tries := 0
+		while tries < 40 and token == _play_token:
+			await get_tree().process_frame
+			var t := nxt.video.get_video_texture()
+			if t != null and t.get_size().x > 0 and nxt.video.stream_position > 0.0: break
+			tries += 1
 	if token != _play_token: return
 	_active = nxt
-	prev.material = null
+	prev.video.material = null
+	prev.img.material = null
+	_set_bg(str(clip.get("bg", scene.get("bg", ""))))
 	_last_rect = Rect2()
 	_layout_players()
 	var fade := float(clip.get("fade", scene.get("fade", 0.12)))
 	var tw := create_tween()
 	tw.set_parallel(true)
-	tw.tween_property(nxt, "modulate:a", 1.0, maxf(fade, 0.001))
-	tw.tween_property(prev, "modulate:a", 0.0, maxf(fade, 0.001))
+	tw.tween_property(nxt.node(), "modulate:a", 1.0, maxf(fade, 0.001))
+	tw.tween_property(prev.node(), "modulate:a", 0.0, maxf(fade, 0.001))
 	tw.chain().tween_callback(func():
-		if prev != _active and is_instance_valid(prev): prev.stop())
-	_cur = {"name": clip_name, "clip": clip, "src": src, "pauses": {}, "qtes": {}, "events": {}, "t_start": _now(), "done": false}
+		if prev != _active: prev.stop())
+	_cur = {"name": clip_name, "clip": clip, "src": src, "pauses": {}, "qtes": {}, "events": {}, "t_start": _now(), "done": false,
+		"breathe": bool(clip.get("breathe", as_img))}
+	if _cur["breathe"]: _fx["on"] = true
 	clip_started.emit(clip_name)
 	if clip.has("say"):
 		say(str(_pick(clip["say"], clip_name + ":say")), str(clip.get("who", scene.get("who", ""))), float(clip.get("sayTime", 0)))
 	await run(clip.get("do"))
 
-func _on_player_finished(p: VideoStreamPlayer):
+func _on_player_finished(p: Slot):
 	if p != _active or _cur.is_empty() or _ended: return
 	if _cur.get("done", false): return
 	_cur["done"] = true
@@ -418,7 +540,8 @@ func _on_player_finished(p: VideoStreamPlayer):
 	if bool(c.get("loop", false)):
 		_cur["done"] = false
 		_cur["t_start"] = _now()
-		p.play()   # احتياط لو loop ما اشتغل
+		if p.is_img: p.start_image(p.img.texture, 0.0)
+		else: p.video.play()   # احتياط لو loop ما اشتغل
 		return
 	var token := _play_token
 	await run(c.get("on_end"))
@@ -474,7 +597,7 @@ func _exec(a) -> void:
 		return
 	if a.has("resume"):
 		_hide_choices()
-		_active.paused = false
+		_active.set_paused(false)
 	if a.has("choices"):
 		await _choose(a)
 		return
@@ -623,7 +746,7 @@ func _area(h: Dictionary) -> float:
 
 func _active_hotspots() -> Array:
 	if _cur.is_empty(): return []
-	var t := _active.stream_position
+	var t := _active.pos()
 	var out: Array = []
 	for h in _own_and_inherited("hotspots"):
 		if h.has("from") and t < float(h["from"]): continue
@@ -684,7 +807,7 @@ func _handle(g: String, c: Dictionary):
 		return
 	if _cur.is_empty(): return
 	_idle_since = _now()
-	var t := _active.stream_position
+	var t := _active.pos()
 	# حركة بوقت محدد (QTE)
 	var q := _arr(_cur["clip"].get("qte"))
 	for i in q.size():
@@ -773,7 +896,7 @@ func _tick_hold():
 			_g["held"] = true
 			_trigger(h, "hold")
 			return
-	var t := _active.stream_position
+	var t := _active.pos()
 	var q := _arr(_cur["clip"].get("qte"))
 	for i in q.size():
 		var Q: Dictionary = q[i]
@@ -789,10 +912,14 @@ func _process(_delta):
 	_layout_players()
 	_tick_choice_timer()
 	if _cur.is_empty() or _ended: return
-	var t := _active.stream_position
+	var t := _active.pos()
 	var c: Dictionary = _cur["clip"]
+	# صورة انتهت مدتها = نهاية عادية للمقطع
+	if _active.is_img and not _cur["done"] and not _active.is_paused() and not _active.is_playing():
+		_on_player_finished(_active)
+		return
 	# حارس: لو الفك وقف (مقطع تالف) والمقطع مو في وقفة، نعامله كأنه خلص عشان المشهد ما يعلق
-	if not _cur["done"] and not _active.paused:
+	if not _cur["done"] and not _active.is_paused():
 		var stalled := false
 		if not _active.is_playing() and _now() - float(_cur["t_start"]) > 0.6:
 			stalled = true
@@ -815,7 +942,7 @@ func _process(_delta):
 	for i in ps.size():
 		if _cur["pauses"].has(i) or t < float(ps[i].get("at", 0)): continue
 		_cur["pauses"][i] = true
-		_active.paused = true
+		_active.set_paused(true)
 		_choose(ps[i])
 	var q := _arr(c.get("qte"))
 	for i in q.size():
@@ -844,7 +971,7 @@ func _hotspot_center(h: Dictionary) -> Vector2:
 func _refresh_hints():
 	var items: Array = []
 	if not _cur.is_empty() and not _ended:
-		var t := _active.stream_position
+		var t := _active.pos()
 		var q := _arr(_cur["clip"].get("qte"))
 		for i in q.size():
 			var Q: Dictionary = q[i]
@@ -945,7 +1072,8 @@ func _fx_release():
 	_fx["sy"] = _fx["py"]
 
 func _fx_frame(delta: float):
-	if not _fx["on"]: return
+	var breathing: bool = not _cur.is_empty() and bool(_cur.get("breathe", false))
+	if not _fx["on"] and not breathing: return
 	var f := _fx
 	var now_ms := float(Time.get_ticks_msec())
 	var dt := minf(0.05, delta)
@@ -965,13 +1093,13 @@ func _fx_frame(delta: float):
 	var pulse_t := (now_ms - float(f["pulse0"])) / 1000.0 if float(f["pulse0"]) > 0.0 else 9.0
 	var shake := sin(shake_t * 70.0) * 6.0 * (1.0 - shake_t / 0.5) if shake_t < 0.5 else 0.0
 	var pulse := sin(pulse_t * PI / 0.6) if pulse_t < 0.6 else 0.0
-	var alive: bool = f["down"] or absf(float(f["depth"])) > 0.02 or absf(float(f["vel"])) > 0.05 or rt < 1.2 or shake_t < 0.5 or pulse_t < 0.6
+	var alive: bool = f["down"] or absf(float(f["depth"])) > 0.02 or absf(float(f["vel"])) > 0.05 or rt < 1.2 or shake_t < 0.5 or pulse_t < 0.6 or breathing
 	if not alive:
 		f["on"] = false
-		_active.material = null
+		_active.node().material = null
 		return
 	var r := content_rect()
-	if _active.material != _mat: _active.material = _mat
+	if _active.node().material != _mat: _active.node().material = _mat
 	_mat.set_shader_parameter("u_size", r.size)
 	_mat.set_shader_parameter("u_p", Vector2(float(f["px"]) if f["down"] else float(f["sx"]), float(f["py"]) if f["down"] else float(f["sy"])) - r.position)
 	_mat.set_shader_parameter("u_r", float(f["r"]))
@@ -981,7 +1109,8 @@ func _fx_frame(delta: float):
 	_mat.set_shader_parameter("u_ramp", 0.0 if f["down"] else float(f["ramp"]))
 	_mat.set_shader_parameter("u_shake", Vector2(shake, 0.0))
 	_mat.set_shader_parameter("u_pulse", pulse)
-	_mat.set_shader_parameter("u_alpha", _active.modulate.a)
+	_mat.set_shader_parameter("u_breath", sin(now_ms / 1000.0 * 1.7) if breathing else 0.0)
+	_mat.set_shader_parameter("u_alpha", _active.node().modulate.a)
 
 # ------------------------------------------------------------------ حفظ وإنهاء
 func _save_path() -> String:
@@ -1000,8 +1129,8 @@ func _finish(reason: String):
 	if _ended: return
 	_ended = true
 	_fx_release()
-	_pa.stop()
-	_pb.stop()
+	_sa.stop()
+	_sb.stop()
 	if bool(scene.get("persist", false)): _save()
 	finished.emit({"vars": vars.duplicate(true), "start_vars": start_vars.duplicate(true), "reason": reason, "scene_id": str(scene.get("id", ""))})
 

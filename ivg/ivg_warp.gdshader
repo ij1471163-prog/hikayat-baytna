@@ -12,6 +12,7 @@ uniform float u_rt = 9.0;                  // وقت من بعد الفك (لل�
 uniform float u_ramp = 0.0;                // قوة الموجة
 uniform vec2 u_shake = vec2(0.0);
 uniform float u_pulse = 0.0;
+uniform float u_breath = 0.0;              // تنفّس خفيف للصورة الثابتة (-1..1)، القدمين ثابتة
 uniform float u_alpha = 1.0;               // شفافية الفيديو (التلاشي بين المقاطع)
 
 void fragment() {
@@ -26,6 +27,8 @@ void fragment() {
 	q += (dist > 0.001 ? d / dist : vec2(0.0)) * w;   // موجة بعد الفك
 	vec2 c = u_size * 0.5;
 	q = c + (q - c) * (1.0 - u_pulse * 0.03) + u_shake;   // نبضة/اهتزاز للجسم كله
+	q.y = u_size.y + (q.y - u_size.y) * (1.0 - u_breath * 0.008);
+	q.x = c.x + (q.x - c.x) * (1.0 - u_breath * 0.003);
 	vec2 uv = q / u_size;
 	if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) {
 		COLOR = vec4(0.0);

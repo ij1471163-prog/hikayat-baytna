@@ -12,6 +12,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from convert_videos import CHARS, slug, EXT  # نفس أسماء الشخصيات والصيغ
 
+IMG_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".svg"}
+
+
+def is_ext(s: str) -> bool:
+    """مسار يشير لملف داخل اللعبة (res://) ما يحتاج تحويل ولا وجوده جنب scene.json."""
+    return s.startswith("res://") or s.startswith("user://")
+
+
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "incoming" / "interactive"
 DST = ROOT / "assets" / "ivg"
@@ -44,6 +52,9 @@ def validate(scene, folder: Path):
         return ["scene.json ما فيه clips"]
     if scene.get("start") not in clips:
         errs.append(f"start='{scene.get('start')}' مو موجود في clips")
+    bg = scene.get("bg")
+    if isinstance(bg, str) and not is_ext(bg) and not (folder / bg).is_file():
+        errs.append(f"الخلفية {bg} غير موجودة جنب scene.json")
     refs = set()
     clip_names_referenced(clips, refs)
     for r in sorted(refs - set(clips)):
@@ -52,8 +63,11 @@ def validate(scene, folder: Path):
         if not srcs_of(c):
             errs.append(f"المقطع {name} بدون src")
         for s in srcs_of(c):
-            if not (folder / s).is_file():
+            if not is_ext(s) and not (folder / s).is_file():
                 errs.append(f"المقطع {name}: الملف {s} غير موجود جنب scene.json")
+        bg = c.get("bg")
+        if isinstance(bg, str) and not is_ext(bg) and not (folder / bg).is_file():
+            errs.append(f"المقطع {name}: الخلفية {bg} غير موجودة جنب scene.json")
         inh = c.get("inherit")
         if inh and inh not in clips:
             errs.append(f"المقطع {name}: inherit='{inh}' غير موجود")
@@ -78,9 +92,29 @@ def convert_scene(char_dir: str, scene_dir: Path):
     out_dir = DST / char_dir / slug(scene_dir.name)
     out_dir.mkdir(parents=True, exist_ok=True)
     done = {}
+
+    def copy_image(rel: str) -> str:
+        if is_ext(rel):
+            return rel
+        if rel not in done:
+            dst_name = slug(Path(rel).stem) + Path(rel).suffix.lower()
+            shutil.copyfile(scene_dir / rel, out_dir / dst_name)
+            done[rel] = dst_name
+        return done[rel]
+
+    if isinstance(scene.get("bg"), str):
+        scene["bg"] = copy_image(scene["bg"])
     for name, c in scene["clips"].items():
+        if isinstance(c.get("bg"), str):
+            c["bg"] = copy_image(c["bg"])
         new = []
         for s in srcs_of(c):
+            if is_ext(s):
+                new.append(s)           # مورد داخل اللعبة (مثل صور الشخصيات): ما نلمسه
+                continue
+            if Path(s).suffix.lower() in IMG_EXT:
+                new.append(copy_image(s))   # صورة: مقطع بدون فيديو
+                continue
             if s in done:
                 new.append(done[s])
                 continue
