@@ -2316,7 +2316,7 @@ func video_menu(npc: String):
  say(nm, "اختر فيديو.")
  for i in vids.size():
   var path: String = vids[i]
-  choice("فيديو %d" % (i + 1), func(): play_video(path, func(): video_menu(npc)))
+  choice("فيديو %d" % (i + 1), func(): play_video(path, func(): video_menu(npc), vids, i))
  choice("رجوع", func(): talk_to(npc))
 
 # ================= مشاهد فيديو تفاعلية (محرك IVG: ivg/ivg_engine.gd) =================
@@ -2405,7 +2405,9 @@ func ivg_apply_rewards(data: Dictionary, res: Dictionary, npc: String) -> String
  return "انتهى المشهد. " + "، ".join(parts) if not parts.is_empty() else ""
 
 var _video_box: Control = null
-func play_video(path: String, after: Callable = Callable()):
+# مشغّل مشاهد الفيديو: إيقاف/كمل، إعادة من البداية، التالي، تكرار، إغلاق. المقاطع اللي تنتهي يظهر معها «كمل».
+# ملاحظة: Godot ما يدعم القفز لثانية معينة في الفيديو، فـ«رجوع» = إعادة المشهد من أوله.
+func play_video(path: String, after: Callable = Callable(), playlist: Array = [], idx: int = 0):
  var st = load(path)
  if st == null:
   note.text = "ما قدرت أشغل الفيديو."
@@ -2417,6 +2419,7 @@ func play_video(path: String, after: Callable = Callable()):
  var bgc := ColorRect.new()
  bgc.color = Color.BLACK
  bgc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ bgc.mouse_filter = Control.MOUSE_FILTER_IGNORE
  box.add_child(bgc)
  var vp := VideoStreamPlayer.new()
  vp.stream = st
@@ -2424,11 +2427,19 @@ func play_video(path: String, after: Callable = Callable()):
  vp.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
  vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
  box.add_child(vp)
- var close := Button.new()
- close.text = "إغلاق"
- close.focus_mode = Control.FOCUS_NONE
- close.add_theme_font_size_override("font_size", 20)
- close.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.8)))
+ var has_next := idx + 1 < playlist.size()
+ var mk := func(txt: String, fs: int = 22) -> Button:
+  var b := Button.new()
+  b.text = txt
+  b.focus_mode = Control.FOCUS_NONE
+  b.custom_minimum_size = Vector2(0, 56)
+  b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  b.add_theme_font_size_override("font_size", fs)
+  b.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.82)))
+  b.add_theme_stylebox_override("pressed", pill_style(Color(0.3, 0.2, 0.35, 0.9)))
+  return b
+ var close: Button = mk.call("إغلاق", 20)
+ close.size_flags_horizontal = Control.SIZE_SHRINK_END
  close.anchor_left = 1.0
  close.anchor_right = 1.0
  close.offset_left = -130
@@ -2436,27 +2447,93 @@ func play_video(path: String, after: Callable = Callable()):
  close.offset_top = 16
  close.offset_bottom = 60
  box.add_child(close)
- var rep := Button.new()
- rep.text = "تكرار: لا"
- rep.focus_mode = Control.FOCUS_NONE
- rep.add_theme_font_size_override("font_size", 18)
- rep.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.8)))
- rep.offset_left = 16
- rep.offset_right = 140
- rep.offset_top = 16
- rep.offset_bottom = 60
- box.add_child(rep)
- rep.pressed.connect(func():
-  vp.loop = not vp.loop
-  rep.text = "تكرار: نعم" if vp.loop else "تكرار: لا")
+ var bar := VBoxContainer.new()
+ bar.anchor_top = 1.0
+ bar.anchor_bottom = 1.0
+ bar.anchor_right = 1.0
+ bar.offset_left = 16
+ bar.offset_right = -16
+ bar.offset_top = -110
+ bar.offset_bottom = -14
+ bar.add_theme_constant_override("separation", 8)
+ bar.mouse_filter = Control.MOUSE_FILTER_PASS
+ box.add_child(bar)
+ var prog := ProgressBar.new()
+ prog.show_percentage = false
+ prog.custom_minimum_size = Vector2(0, 8)
+ prog.max_value = 1.0
+ prog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ bar.add_child(prog)
+ var row := HBoxContainer.new()
+ row.add_theme_constant_override("separation", 10)
+ bar.add_child(row)
+ var b_restart: Button = mk.call("⏮ من البداية")
+ var b_pp: Button = mk.call("⏸ إيقاف")
+ var b_next: Button = mk.call("⏭ التالي" if has_next else "⏭ إنهاء")
+ var b_rep: Button = mk.call("تكرار: لا", 18)
+ for b in [b_restart, b_pp, b_next, b_rep]:
+  row.add_child(b)
+ var st_ended := [false]
+ var hide_t := [0.0]
  var finish := func():
   if is_instance_valid(box): box.queue_free()
+  if _video_box == box: _video_box = null
   if after.is_valid(): after.call()
- close.pressed.connect(finish)
+ var go_next := func():
+  if has_next:
+   play_video(str(playlist[idx + 1]), after, playlist, idx + 1)
+  else:
+   finish.call()
+ var show_bar := func():
+  bar.visible = true
+  hide_t[0] = 3.0
+ b_restart.pressed.connect(func():
+  st_ended[0] = false
+  vp.stop()
+  vp.paused = false
+  vp.play()
+  b_pp.text = "⏸ إيقاف"
+  show_bar.call())
+ b_pp.pressed.connect(func():
+  if st_ended[0]:
+   st_ended[0] = false
+   vp.play()
+   b_pp.text = "⏸ إيقاف"
+  else:
+   vp.paused = not vp.paused
+   b_pp.text = "▶ كمل" if vp.paused else "⏸ إيقاف"
+  show_bar.call())
+ b_next.pressed.connect(func(): go_next.call())
+ b_rep.pressed.connect(func():
+  vp.loop = not vp.loop
+  b_rep.text = "تكرار: نعم" if vp.loop else "تكرار: لا"
+  show_bar.call())
+ close.pressed.connect(func(): finish.call())
  vp.finished.connect(func():
-  if not vp.loop: finish.call())
+  if vp.loop: return
+  st_ended[0] = true
+  b_pp.text = "↺ إعادة"
+  bar.visible = true
+  hide_t[0] = 0.0)
+ # لمس الشاشة يظهر الأزرار؛ تختفي بعد ٣ ثواني من التشغيل
+ box.gui_input.connect(func(ev: InputEvent):
+  if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
+   show_bar.call())
+ var tm := Timer.new()
+ tm.wait_time = 0.1
+ tm.autostart = true
+ box.add_child(tm)
+ tm.timeout.connect(func():
+  var ln := 0.0
+  if vp.has_method("get_stream_length"): ln = float(vp.call("get_stream_length"))
+  prog.visible = ln > 0.0
+  if ln > 0.0: prog.value = clampf(vp.stream_position / ln, 0.0, 1.0)
+  if hide_t[0] > 0.0 and not vp.paused and not st_ended[0]:
+   hide_t[0] -= 0.1
+   if hide_t[0] <= 0.0: bar.visible = false)
  add_child(box)
  _video_box = box
+ show_bar.call()
  vp.play()
 
 func quest_dialogue(qid: String, st: Dictionary, i: int):
