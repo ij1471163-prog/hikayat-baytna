@@ -749,6 +749,22 @@ func go(place):
    choice("سالفة: " + str(gsc["title"]), func(): play_group_scene(gsc, 0))
  if place in ["المنزل", "المطبخ", "الصالة", "غرفة النوم", "غرفة ليان"] and not layan_here(place) and is_instance_valid(note):
   note.text = "ليان مو هنا الحين؛ هي في %s." % str(npc_sched("ليان")[period])
+ var ivs := available_ivg(place)
+ if not ivs.is_empty():
+  var ivp: String = ivs["path"]
+  var ivn: String = ivs["npc"]
+  var ivd: Dictionary = ivs["data"]
+  var ivid: String = ivs["id"]
+  var ivgo := func():
+   if not story_seen.has(ivid): story_seen.append(ivid)
+   play_interactive(ivp, ivn, func(): go(place))
+  if ivd["when"].get("auto", false):
+   explore_mode = true
+   refresh_cards()
+   room_intro()
+   ivgo.call()
+   return
+  choice("🎬 " + str(ivd.get("title", "مشهد")), ivgo)
  explore_mode = true
  refresh_cards()
  room_intro()
@@ -2338,10 +2354,40 @@ func ivg_read(path: String) -> Dictionary:
  return {}
 
 func add_interactive_choice(npc: String):
- var sc := npc_interactive(npc)
+ var sc: Array = []
+ for p in npc_interactive(npc):
+  var d := ivg_read(str(p))
+  if d.is_empty() or (d.has("when") and not d["when"].get("menu", false)): continue
+  sc.append(p)
  if sc.is_empty(): return
  var nm := "سلمى" if npc == "الشبح" else npc
  choice("لقاء تفاعلي مع %s (%d)" % [nm, sc.size()], func(): interactive_menu(npc))
+
+# مشهد (فيديو/تفاعلي) يظهر لحاله بحسب شروط: "when" داخل scene.json (نفس مفاتيح «سالفة»):
+#   where: [غرف]، p: [0 صباح،1 ظهر،2 مساء،3 ليل]، day: أقل يوم، rel: {اسم: أقل علاقة}، who: [مين لازم يكون موجود]،
+#   need: [مشاهد/علامات لازم تصير قبله]، repeat: "daily" (مرة بكل يوم؛ بدونها مرة وحدة بس)، auto: true (يشتغل أول ما تدخل الغرفة بدل زر)، menu: true (يبقى بقائمة اللقاء التفاعلي)
+func available_ivg(place: String) -> Dictionary:
+ var scr = load("res://ivg_data.gd")
+ if scr == null: return {}
+ for npc in (scr.SCENES as Dictionary):
+  for p in (scr.SCENES as Dictionary)[npc]:
+   if not FileAccess.file_exists(str(p)): continue
+   var data := ivg_read(str(p))
+   var w = data.get("when", null)
+   if typeof(w) != TYPE_DICTIONARY: continue
+   var sid := "ivg:" + str(data.get("id", p))
+   if str(w.get("repeat", "")) == "daily": sid += ":d%d" % day
+   var sc: Dictionary = (w as Dictionary).duplicate()
+   sc["id"] = sid
+   if not sc.has("who"): sc["who"] = [str(npc)]
+   for k in ["p", "preg"]:
+    if sc.has(k):
+     var ints: Array = []
+     for x in sc[k]: ints.append(int(x))
+     sc[k] = ints
+   if group_scene_ok(sc, place):
+    return {"path": str(p), "npc": str(npc), "data": data, "id": sid}
+ return {}
 
 func interactive_menu(npc: String):
  var nm := "سلمى" if npc == "الشبح" else npc
@@ -2352,6 +2398,7 @@ func interactive_menu(npc: String):
   var path: String = p
   var data := ivg_read(path)
   if data.is_empty(): continue
+  if data.has("when") and not data["when"].get("menu", false): continue
   choice(str(data.get("title", "مشهد %d" % i)), func(): play_interactive(path, npc, func(): interactive_menu(npc)))
  choice("رجوع", func(): talk_to(npc))
 
