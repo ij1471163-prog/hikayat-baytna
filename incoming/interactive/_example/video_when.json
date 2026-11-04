@@ -1,0 +1,10 @@
+{
+ "id": "layan-cook-morning",
+ "title": "ليان تطبخ",
+ "who": "ليان",
+ "start": "cook",
+ "when": { "where": ["المطبخ"], "p": [0], "day": 2, "rel": { "ليان": 55 } },
+ "clips": {
+  "cook": { "src": "cook.mp4", "on_end": [ { "stop": true } ] }
+ }
+}

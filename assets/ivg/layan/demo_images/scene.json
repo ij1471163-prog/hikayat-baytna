@@ -1,0 +1,292 @@
+{
+ "id": "layan-demo-images",
+ "title": "لقاء تجريبي (بدون فيديو)",
+ "who": "ليان",
+ "bg": "res://assets/backgrounds/living_room.jpg",
+ "start": "idle",
+ "fade": 0.15,
+ "hintAfter": 3,
+ "vars": {
+  "mood": 50,
+  "trust": 0
+ },
+ "meters": [
+  {
+   "var": "mood",
+   "label": "المزاج",
+   "max": 100,
+   "color": "#ff8fb1"
+  },
+  {
+   "var": "trust",
+   "label": "الثقة",
+   "max": 10,
+   "color": "#ffd75a"
+  }
+ ],
+ "game": {
+  "max": 6,
+  "fx": {
+   "energy": -2
+  },
+  "rewards": [
+   {
+    "var": "mood",
+    "per": 0.08,
+    "stat": "relationship"
+   },
+   {
+    "var": "trust",
+    "per": 2,
+    "stat": "rel"
+   }
+  ]
+ },
+ "on_start": [
+  {
+   "say": "المس راسي أو كتفي، اضغط مطوّلًا على راسي، أو اسحب لفوق نسولف.",
+   "time": 4
+  }
+ ],
+ "clips": {
+  "idle": {
+   "src": "res://assets/sprites/layan/01_pink_home_pajamas.png",
+   "loop": true,
+   "hotspots": [
+    {
+     "id": "head",
+     "x": 0.31,
+     "y": 0.115,
+     "r": 0.15,
+     "hint": true,
+     "on": {
+      "tap": [
+       {
+        "play": [
+         "happy",
+         "happy2"
+        ]
+       },
+       {
+        "add": {
+         "mood": 3
+        }
+       }
+      ],
+      "hold": [
+       {
+        "play": "happy"
+       },
+       {
+        "say": "خلك كذا... مرتاحة مرة."
+       },
+       {
+        "add": {
+         "mood": 6,
+         "trust": 1
+        }
+       },
+       {
+        "fx": "pulse"
+       }
+      ]
+     }
+    },
+    {
+     "id": "shoulderL",
+     "x": 0.11,
+     "y": 0.3,
+     "r": 0.09,
+     "do": [
+      {
+       "play": "shy"
+      },
+      {
+       "add": {
+        "mood": 1
+       }
+      }
+     ],
+     "combo": {
+      "count": 4,
+      "within": 2.5,
+      "group": "shoulders",
+      "do": [
+       {
+        "play": "annoyed"
+       },
+       {
+        "say": "خلاص عاد!"
+       },
+       {
+        "add": {
+         "mood": -8
+        }
+       },
+       {
+        "fx": "shake"
+       }
+      ]
+     }
+    },
+    {
+     "id": "shoulderR",
+     "x": 0.54,
+     "y": 0.3,
+     "r": 0.09,
+     "do": [
+      {
+       "play": "shy"
+      },
+      {
+       "add": {
+        "mood": 1
+       }
+      }
+     ],
+     "combo": {
+      "count": 4,
+      "within": 2.5,
+      "group": "shoulders",
+      "do": [
+       {
+        "play": "annoyed"
+       },
+       {
+        "say": "خلاص عاد!"
+       },
+       {
+        "add": {
+         "mood": -8
+        }
+       },
+       {
+        "fx": "shake"
+       }
+      ]
+     }
+    }
+   ],
+   "on": {
+    "swipe-up": [
+     {
+      "if": "mood >= 55",
+      "then": [
+       {
+        "play": "talk"
+       }
+      ],
+      "else": [
+       {
+        "say": "مو مزاجي أسولف... دلّعني شوي أول."
+       },
+       {
+        "fx": "shake"
+       }
+      ]
+     }
+    ],
+    "double": [
+     {
+      "say": "هيه! وش فيك؟"
+     },
+     {
+      "fx": "pulse"
+     }
+    ]
+   }
+  },
+  "happy": {
+   "src": "res://assets/sprites/layan/01_pink_home_pajamas.png",
+   "duration": 1.6,
+   "then": "idle",
+   "inherit": "idle",
+   "say": [
+    "هيهي، تحب راسي؟",
+    "أهلين!"
+   ],
+   "do": [
+    {
+     "fx": "pulse"
+    }
+   ]
+  },
+  "happy2": {
+   "src": "res://assets/sprites/layan/01_pink_home_pajamas.png",
+   "duration": 1.6,
+   "then": "idle",
+   "inherit": "idle",
+   "say": "ههه حلوة هالدلعة",
+   "do": [
+    {
+     "fx": "pulse"
+    }
+   ]
+  },
+  "shy": {
+   "src": "res://assets/sprites/layan/01_pink_home_pajamas.png",
+   "duration": 1.6,
+   "then": "idle",
+   "inherit": "idle",
+   "say": [
+    "استحيت...",
+    "لا تلمس كتفي!"
+   ]
+  },
+  "annoyed": {
+   "src": "res://assets/sprites/layan/01_pink_home_pajamas.png",
+   "duration": 2.0,
+   "then": "idle"
+  },
+  "talk": {
+   "src": "res://assets/sprites/layan/01_pink_home_pajamas.png",
+   "duration": 6,
+   "then": "idle",
+   "inherit": "idle",
+   "pause": [
+    {
+     "at": 0.4,
+     "prompt": "نطلع نتمشى؟",
+     "timeout": 6,
+     "default": "مو الحين",
+     "choices": [
+      {
+       "text": "إيه، يلا!",
+       "do": [
+        {
+         "add": {
+          "mood": 8,
+          "trust": 2
+         }
+        },
+        {
+         "say": "ياااي!"
+        }
+       ],
+       "go": "happy"
+      },
+      {
+       "text": "مو الحين",
+       "do": [
+        {
+         "say": "طيب... بكرة؟"
+        }
+       ],
+       "go": "shy"
+      }
+     ]
+    }
+   ],
+   "events": [
+    {
+     "at": 0.1,
+     "do": [
+      {
+       "say": "تدري؟ مليت من القعدة..."
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

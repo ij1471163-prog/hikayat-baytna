@@ -17,4 +17,14 @@ for p in files:
         im.verify()
 print(f'OK: {len(files)} outfit PNGs are readable.')
 PY
+for f in ivg/ivg_engine.gd ivg/ivg_cond.gd ivg/ivg_warp.gdshader ivg_data.gd; do
+  test -s "$f" || { echo "MISSING IVG FILE: $f"; exit 1; }
+done
+python3 - <<'PY'
+import json, glob
+n = 0
+for p in glob.glob('assets/ivg/**/scene.json', recursive=True) + ['incoming/interactive/_example/scene.json', 'tools/ivg/test_scene.json']:
+    json.load(open(p, encoding='utf-8')); n += 1
+print(f'OK: {n} interactive scene JSON files are valid.')
+PY
 echo 'OK: required Godot project and Android export files are present.'

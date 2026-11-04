@@ -2,3 +2,4 @@
 *.import
 __pycache__/
 incoming/.last_run.json
+tools/ivg/.clips/

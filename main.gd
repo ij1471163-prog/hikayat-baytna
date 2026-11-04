@@ -749,6 +749,22 @@ func go(place):
    choice("سالفة: " + str(gsc["title"]), func(): play_group_scene(gsc, 0))
  if place in ["المنزل", "المطبخ", "الصالة", "غرفة النوم", "غرفة ليان"] and not layan_here(place) and is_instance_valid(note):
   note.text = "ليان مو هنا الحين؛ هي في %s." % str(npc_sched("ليان")[period])
+ var ivs := available_ivg(place)
+ if not ivs.is_empty():
+  var ivp: String = ivs["path"]
+  var ivn: String = ivs["npc"]
+  var ivd: Dictionary = ivs["data"]
+  var ivid: String = ivs["id"]
+  var ivgo := func():
+   if not story_seen.has(ivid): story_seen.append(ivid)
+   play_interactive(ivp, ivn, func(): go(place))
+  if ivd["when"].get("auto", false):
+   explore_mode = true
+   refresh_cards()
+   room_intro()
+   ivgo.call()
+   return
+  choice("🎬 " + str(ivd.get("title", "مشهد")), ivgo)
  explore_mode = true
  refresh_cards()
  room_intro()
@@ -2286,11 +2302,13 @@ func talk_to(npc: String):
   interact()
   choice("روتين ليان اليومي", layan_routine)
   choice("أعطها هدية", func(): gift_menu("ليان"))
+  add_interactive_choice(npc)
   add_video_choice(npc)
   choice("رجوع", func(): go(location))
  else:
   character_scene(npc)
   choice("أعطه هدية", func(): gift_menu(npc))
+  add_interactive_choice(npc)
   add_video_choice(npc)
 
 # ================= فيديوهات الشخصيات (ترفعها في incoming/videos/<الشخصية>/) =================
@@ -2314,11 +2332,129 @@ func video_menu(npc: String):
  say(nm, "اختر فيديو.")
  for i in vids.size():
   var path: String = vids[i]
-  choice("فيديو %d" % (i + 1), func(): play_video(path, func(): video_menu(npc)))
+  choice("فيديو %d" % (i + 1), func(): play_video(path, func(): video_menu(npc), vids, i))
  choice("رجوع", func(): talk_to(npc))
 
+# ================= مشاهد فيديو تفاعلية (محرك IVG: ivg/ivg_engine.gd) =================
+# ترفع المشهد في incoming/interactive/<الشخصية>/<اسم_المشهد>/ (scene.json + المقاطع) وتتحول وتتركب تلقائيًا. الشرح: incoming/interactive/README-AR.md
+const IvgEngine = preload("res://ivg/ivg_engine.gd")
+var _ivg_box: Control = null
+
+func npc_interactive(npc: String) -> Array:
+ var scr = load("res://ivg_data.gd")
+ if scr == null: return []
+ var out: Array = []
+ for p in (scr.SCENES as Dictionary).get(npc, []):
+  if FileAccess.file_exists(str(p)): out.append(str(p))
+ return out
+
+func ivg_read(path: String) -> Dictionary:
+ var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+ if typeof(data) == TYPE_DICTIONARY and data.has("clips") and data.has("start"): return data
+ return {}
+
+func add_interactive_choice(npc: String):
+ var sc: Array = []
+ for p in npc_interactive(npc):
+  var d := ivg_read(str(p))
+  if d.is_empty() or (d.has("when") and not d["when"].get("menu", false)): continue
+  sc.append(p)
+ if sc.is_empty(): return
+ var nm := "سلمى" if npc == "الشبح" else npc
+ choice("لقاء تفاعلي مع %s (%d)" % [nm, sc.size()], func(): interactive_menu(npc))
+
+# مشهد (فيديو/تفاعلي) يظهر لحاله بحسب شروط: "when" داخل scene.json (نفس مفاتيح «سالفة»):
+#   where: [غرف]، p: [0 صباح،1 ظهر،2 مساء،3 ليل]، day: أقل يوم، rel: {اسم: أقل علاقة}، who: [مين لازم يكون موجود]،
+#   need: [مشاهد/علامات لازم تصير قبله]، repeat: "daily" (مرة بكل يوم؛ بدونها مرة وحدة بس)، auto: true (يشتغل أول ما تدخل الغرفة بدل زر)، menu: true (يبقى بقائمة اللقاء التفاعلي)
+func available_ivg(place: String) -> Dictionary:
+ var scr = load("res://ivg_data.gd")
+ if scr == null: return {}
+ for npc in (scr.SCENES as Dictionary):
+  for p in (scr.SCENES as Dictionary)[npc]:
+   if not FileAccess.file_exists(str(p)): continue
+   var data := ivg_read(str(p))
+   var w = data.get("when", null)
+   if typeof(w) != TYPE_DICTIONARY: continue
+   var sid := "ivg:" + str(data.get("id", p))
+   if str(w.get("repeat", "")) == "daily": sid += ":d%d" % day
+   var sc: Dictionary = (w as Dictionary).duplicate()
+   sc["id"] = sid
+   if not sc.has("who"): sc["who"] = [str(npc)]
+   for k in ["p", "preg"]:
+    if sc.has(k):
+     var ints: Array = []
+     for x in sc[k]: ints.append(int(x))
+     sc[k] = ints
+   if group_scene_ok(sc, place):
+    return {"path": str(p), "npc": str(npc), "data": data, "id": sid}
+ return {}
+
+func interactive_menu(npc: String):
+ var nm := "سلمى" if npc == "الشبح" else npc
+ say(nm, "اختر مشهدًا. المس الشاشة، اضغط مطوّلًا، امسح أو اسحب وشوف ردة فعلها.")
+ var i := 0
+ for p in npc_interactive(npc):
+  i += 1
+  var path: String = p
+  var data := ivg_read(path)
+  if data.is_empty(): continue
+  if data.has("when") and not data["when"].get("menu", false): continue
+  choice(str(data.get("title", "مشهد %d" % i)), func(): play_interactive(path, npc, func(): interactive_menu(npc)))
+ choice("رجوع", func(): talk_to(npc))
+
+func play_interactive(path: String, npc: String, after: Callable = Callable()):
+ var data := ivg_read(path)
+ if data.is_empty():
+  note.text = "ما قدرت أفتح المشهد التفاعلي."
+  return
+ if is_instance_valid(_ivg_box): _ivg_box.queue_free()
+ var e = IvgEngine.new()
+ e.setup(data, path.get_base_dir() + "/", {"muted": false})
+ e.finished.connect(func(res: Dictionary):
+  if is_instance_valid(e): e.queue_free()
+  _ivg_box = null
+  var msg := ivg_apply_rewards(data, res, npc)
+  if msg != "": note.text = msg
+  update_status()
+  if check_scenes(): return
+  if after.is_valid(): after.call())
+ add_child(e)
+ _ivg_box = e
+
+# يحوّل تغيّر عدادات المشهد (المزاج، الثقة...) لتأثير على اللعبة. يتعرّف من "game" داخل scene.json:
+#   "game": {"max": 10, "fx": {"energy": -3}, "rewards": [{"var": "mood", "per": 0.1, "stat": "relationship"}, {"var": "trust", "per": 2, "stat": "rel"}]}
+# stat: relationship (علاقة ليان)، rel (علاقة الشخصية نفسها)، money، energy، house_cleanliness، laundry
+func ivg_apply_rewards(data: Dictionary, res: Dictionary, npc: String) -> String:
+ var g: Dictionary = data.get("game", {})
+ if g.is_empty(): return ""
+ var fx: Dictionary = {}
+ var cap := int(g.get("max", 10))
+ var now_v: Dictionary = res.get("vars", {})
+ var v0: Dictionary = res.get("start_vars", {})
+ for k in g.get("fx", {}):
+  fx[k] = int(g["fx"][k])
+ for r in g.get("rewards", []):
+  var delta := float(now_v.get(r.get("var", ""), 0)) - float(v0.get(r.get("var", ""), 0))
+  var amt := clampi(int(round(delta * float(r.get("per", 1)))), -cap, cap)
+  var stat := str(r.get("stat", "relationship"))
+  if stat == "rel":
+   var d: Dictionary = fx.get("rel", {})
+   d[npc] = int(d.get(npc, 0)) + amt
+   fx["rel"] = d
+  else:
+   fx[stat] = int(fx.get(stat, 0)) + amt
+ apply_fx(fx)
+ var parts: Array = []
+ if fx.has("relationship") and int(fx["relationship"]) != 0: parts.append("علاقة ليان %+d" % int(fx["relationship"]))
+ if fx.has("rel") and int((fx["rel"] as Dictionary).get(npc, 0)) != 0: parts.append("علاقتك بـ%s %+d" % [npc, int(fx["rel"][npc])])
+ if fx.has("energy") and int(fx["energy"]) != 0: parts.append("الطاقة %+d" % int(fx["energy"]))
+ if fx.has("money") and int(fx["money"]) != 0: parts.append("الرصيد %+d" % int(fx["money"]))
+ return "انتهى المشهد. " + "، ".join(parts) if not parts.is_empty() else ""
+
 var _video_box: Control = null
-func play_video(path: String, after: Callable = Callable()):
+# مشغّل مشاهد الفيديو: إيقاف/كمل، إعادة من البداية، التالي، تكرار، إغلاق. المقاطع اللي تنتهي يظهر معها «كمل».
+# ملاحظة: Godot ما يدعم القفز لثانية معينة في الفيديو، فـ«رجوع» = إعادة المشهد من أوله.
+func play_video(path: String, after: Callable = Callable(), playlist: Array = [], idx: int = 0):
  var st = load(path)
  if st == null:
   note.text = "ما قدرت أشغل الفيديو."
@@ -2330,6 +2466,7 @@ func play_video(path: String, after: Callable = Callable()):
  var bgc := ColorRect.new()
  bgc.color = Color.BLACK
  bgc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+ bgc.mouse_filter = Control.MOUSE_FILTER_IGNORE
  box.add_child(bgc)
  var vp := VideoStreamPlayer.new()
  vp.stream = st
@@ -2337,11 +2474,19 @@ func play_video(path: String, after: Callable = Callable()):
  vp.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
  vp.mouse_filter = Control.MOUSE_FILTER_IGNORE
  box.add_child(vp)
- var close := Button.new()
- close.text = "إغلاق"
- close.focus_mode = Control.FOCUS_NONE
- close.add_theme_font_size_override("font_size", 20)
- close.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.8)))
+ var has_next := idx + 1 < playlist.size()
+ var mk := func(txt: String, fs: int = 22) -> Button:
+  var b := Button.new()
+  b.text = txt
+  b.focus_mode = Control.FOCUS_NONE
+  b.custom_minimum_size = Vector2(0, 56)
+  b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+  b.add_theme_font_size_override("font_size", fs)
+  b.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.82)))
+  b.add_theme_stylebox_override("pressed", pill_style(Color(0.3, 0.2, 0.35, 0.9)))
+  return b
+ var close: Button = mk.call("إغلاق", 20)
+ close.size_flags_horizontal = Control.SIZE_SHRINK_END
  close.anchor_left = 1.0
  close.anchor_right = 1.0
  close.offset_left = -130
@@ -2349,27 +2494,93 @@ func play_video(path: String, after: Callable = Callable()):
  close.offset_top = 16
  close.offset_bottom = 60
  box.add_child(close)
- var rep := Button.new()
- rep.text = "تكرار: لا"
- rep.focus_mode = Control.FOCUS_NONE
- rep.add_theme_font_size_override("font_size", 18)
- rep.add_theme_stylebox_override("normal", pill_style(Color(0.1, 0.1, 0.15, 0.8)))
- rep.offset_left = 16
- rep.offset_right = 140
- rep.offset_top = 16
- rep.offset_bottom = 60
- box.add_child(rep)
- rep.pressed.connect(func():
-  vp.loop = not vp.loop
-  rep.text = "تكرار: نعم" if vp.loop else "تكرار: لا")
+ var bar := VBoxContainer.new()
+ bar.anchor_top = 1.0
+ bar.anchor_bottom = 1.0
+ bar.anchor_right = 1.0
+ bar.offset_left = 16
+ bar.offset_right = -16
+ bar.offset_top = -110
+ bar.offset_bottom = -14
+ bar.add_theme_constant_override("separation", 8)
+ bar.mouse_filter = Control.MOUSE_FILTER_PASS
+ box.add_child(bar)
+ var prog := ProgressBar.new()
+ prog.show_percentage = false
+ prog.custom_minimum_size = Vector2(0, 8)
+ prog.max_value = 1.0
+ prog.mouse_filter = Control.MOUSE_FILTER_IGNORE
+ bar.add_child(prog)
+ var row := HBoxContainer.new()
+ row.add_theme_constant_override("separation", 10)
+ bar.add_child(row)
+ var b_restart: Button = mk.call("⏮ من البداية")
+ var b_pp: Button = mk.call("⏸ إيقاف")
+ var b_next: Button = mk.call("⏭ التالي" if has_next else "⏭ إنهاء")
+ var b_rep: Button = mk.call("تكرار: لا", 18)
+ for b in [b_restart, b_pp, b_next, b_rep]:
+  row.add_child(b)
+ var st_ended := [false]
+ var hide_t := [0.0]
  var finish := func():
   if is_instance_valid(box): box.queue_free()
+  if _video_box == box: _video_box = null
   if after.is_valid(): after.call()
- close.pressed.connect(finish)
+ var go_next := func():
+  if has_next:
+   play_video(str(playlist[idx + 1]), after, playlist, idx + 1)
+  else:
+   finish.call()
+ var show_bar := func():
+  bar.visible = true
+  hide_t[0] = 3.0
+ b_restart.pressed.connect(func():
+  st_ended[0] = false
+  vp.stop()
+  vp.paused = false
+  vp.play()
+  b_pp.text = "⏸ إيقاف"
+  show_bar.call())
+ b_pp.pressed.connect(func():
+  if st_ended[0]:
+   st_ended[0] = false
+   vp.play()
+   b_pp.text = "⏸ إيقاف"
+  else:
+   vp.paused = not vp.paused
+   b_pp.text = "▶ كمل" if vp.paused else "⏸ إيقاف"
+  show_bar.call())
+ b_next.pressed.connect(func(): go_next.call())
+ b_rep.pressed.connect(func():
+  vp.loop = not vp.loop
+  b_rep.text = "تكرار: نعم" if vp.loop else "تكرار: لا"
+  show_bar.call())
+ close.pressed.connect(func(): finish.call())
  vp.finished.connect(func():
-  if not vp.loop: finish.call())
+  if vp.loop: return
+  st_ended[0] = true
+  b_pp.text = "↺ إعادة"
+  bar.visible = true
+  hide_t[0] = 0.0)
+ # لمس الشاشة يظهر الأزرار؛ تختفي بعد ٣ ثواني من التشغيل
+ box.gui_input.connect(func(ev: InputEvent):
+  if (ev is InputEventMouseButton and ev.pressed) or (ev is InputEventScreenTouch and ev.pressed):
+   show_bar.call())
+ var tm := Timer.new()
+ tm.wait_time = 0.1
+ tm.autostart = true
+ box.add_child(tm)
+ tm.timeout.connect(func():
+  var ln := 0.0
+  if vp.has_method("get_stream_length"): ln = float(vp.call("get_stream_length"))
+  prog.visible = ln > 0.0
+  if ln > 0.0: prog.value = clampf(vp.stream_position / ln, 0.0, 1.0)
+  if hide_t[0] > 0.0 and not vp.paused and not st_ended[0]:
+   hide_t[0] -= 0.1
+   if hide_t[0] <= 0.0: bar.visible = false)
  add_child(box)
  _video_box = box
+ show_bar.call()
  vp.play()
 
 func quest_dialogue(qid: String, st: Dictionary, i: int):
