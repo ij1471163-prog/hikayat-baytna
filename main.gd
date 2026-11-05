@@ -47,6 +47,7 @@ var events_done := 0
 var story_ended := false
 const WorldData = preload("res://world_data.gd")
 const BanterData = preload("res://banter_data.gd")
+const REEM_OUTFITS := ["jeans", "leggings", "floral", "winter", "lavender"]
 const RoomsData = preload("res://rooms_data.gd")
 const TalkData = preload("res://talk_data.gd")
 const FamilyData = preload("res://family_data.gd")
@@ -1871,6 +1872,11 @@ func sprite_path_for(npc: String) -> String:
   var nn: String = str(NORA_POSES.get(location, "maid"))
   var np := "res://assets/sprites/nora_poses/%s.png" % nn
   if ResourceLoader.exists(np): return np
+ if npc == "ريم":
+  # لبس ريم يتغير كل يوم (خمس أطقم)
+  var rn: String = REEM_OUTFITS[day % REEM_OUTFITS.size()]
+  var rp := "res://assets/sprites/reem_outfits/%s.png" % rn
+  if ResourceLoader.exists(rp): return rp
  if npc == "الشبح":
   return "res://assets/sprites/ghost/body6.png" if int(quest_state.get("ghost", 0)) < 4 else "res://assets/sprites/ghost/body4.png"
  var p: String = str(WorldData.NPCS[npc]["img"]).replace("assets/npcs", "assets/sprites")
