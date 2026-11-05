@@ -982,6 +982,7 @@ var _touch_n := {}
 var npc_spot := {}
 # وضعيات حية داخل البيت (تنطفي لما تختار لليان لبس من الخزانة)
 var idle_on := true
+var haptics_on := true   # اهتزاز الجوال مع اللمس
 var _pose_seed := 0
 var _idle_meta := {}
 var current_cg_path := ""
@@ -2415,7 +2416,7 @@ func play_interactive(path: String, npc: String, after: Callable = Callable()):
   return
  if is_instance_valid(_ivg_box): _ivg_box.queue_free()
  var e = IvgEngine.new()
- e.setup(data, path.get_base_dir() + "/", {"muted": false})
+ e.setup(data, path.get_base_dir() + "/", {"muted": false, "haptics": haptics_on})
  e.finished.connect(func(res: Dictionary):
   if is_instance_valid(e): e.queue_free()
   _ivg_box = null
@@ -2815,6 +2816,14 @@ func open_profile():
   close_overlay()
   show_goal())
  body.add_child(gb)
+ var hb2 = Button.new()
+ hb2.text = "اهتزاز اللمس: " + ("شغّال" if haptics_on else "مطفي")
+ hb2.custom_minimum_size = Vector2(0, 62)
+ hb2.pressed.connect(func():
+  haptics_on = not haptics_on
+  hb2.text = "اهتزاز اللمس: " + ("شغّال" if haptics_on else "مطفي")
+  if haptics_on: Input.vibrate_handheld(40))
+ body.add_child(hb2)
  var sb = Button.new()
  sb.text = "حفظ التقدم"
  sb.custom_minimum_size = Vector2(0, 62)
@@ -3109,9 +3118,10 @@ func load_game():
  baby_born = int(parsed.get("baby_born", baby_born))
  pre_preg_outfit = str(parsed.get("pre_preg_outfit", pre_preg_outfit))
  idle_on = bool(parsed.get("idle_on", true))
+ haptics_on = bool(parsed.get("haptics_on", true))
 
 func save_game():
- var data = {"day":day,"period":period,"money":money,"relationship":relationship,"mood":mood,"outfit":outfit,"owned_outfits":owned_outfits,"laundry":laundry,"energy":energy,"location":location,"character_relations":character_relations,"daily_flags":daily_flags,"layan_hunger":layan_hunger,"layan_thirst":layan_thirst,"layan_tiredness":layan_tiredness,"layan_activity":layan_activity,"house_cleanliness":house_cleanliness,"meals_prepared":meals_prepared,"shower_count":shower_count,"schedule_note":schedule_note,"story_seen":story_seen,"weeks_done":weeks_done,"weeks_checked":weeks_checked,"goal_start_day":goal_start_day,"events_done":events_done,"story_ended":story_ended,"inventory":inventory,"quest_state":quest_state,"quest_day":quest_day,"quest_meta":quest_meta,"qflags":qflags,"skill_pts":skill_pts,"talks_seen":talks_seen,"preg_stage":preg_stage,"preg_start":preg_start,"preg_flags":preg_flags,"craving":craving,"craving_bought":craving_bought,"nursery":nursery,"baby_name":baby_name,"baby_gender":baby_gender,"baby_born":baby_born,"pre_preg_outfit":pre_preg_outfit,"idle_on":idle_on}
+ var data = {"day":day,"period":period,"money":money,"relationship":relationship,"mood":mood,"outfit":outfit,"owned_outfits":owned_outfits,"laundry":laundry,"energy":energy,"location":location,"character_relations":character_relations,"daily_flags":daily_flags,"layan_hunger":layan_hunger,"layan_thirst":layan_thirst,"layan_tiredness":layan_tiredness,"layan_activity":layan_activity,"house_cleanliness":house_cleanliness,"meals_prepared":meals_prepared,"shower_count":shower_count,"schedule_note":schedule_note,"story_seen":story_seen,"weeks_done":weeks_done,"weeks_checked":weeks_checked,"goal_start_day":goal_start_day,"events_done":events_done,"story_ended":story_ended,"inventory":inventory,"quest_state":quest_state,"quest_day":quest_day,"quest_meta":quest_meta,"qflags":qflags,"skill_pts":skill_pts,"talks_seen":talks_seen,"preg_stage":preg_stage,"preg_start":preg_start,"preg_flags":preg_flags,"craving":craving,"craving_bought":craving_bought,"nursery":nursery,"baby_name":baby_name,"baby_gender":baby_gender,"baby_born":baby_born,"pre_preg_outfit":pre_preg_outfit,"idle_on":idle_on,"haptics_on":haptics_on}
  var file = FileAccess.open("user://savegame.json", FileAccess.WRITE)
  if file:
   file.store_string(JSON.stringify(data))

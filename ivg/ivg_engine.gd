@@ -98,6 +98,7 @@ var vars: Dictionary = {}
 var start_vars: Dictionary = {}
 var muted := false
 var debug_hotspots := false
+var haptics := false   # اهتزاز الجوال مع كل تفاعل (يتحكم فيه الإعداد)
 var accent := Color("#ff8fb1")
 
 var _stage: Control
@@ -144,6 +145,7 @@ func setup(scene_dict: Dictionary, base_dir: String, opts: Dictionary = {}):
 	base = base_dir
 	muted = bool(opts.get("muted", false))
 	debug_hotspots = bool(opts.get("debug", scene.get("debug", false)))
+	haptics = bool(opts.get("haptics", false))
 	if scene.has("accent"): accent = Color(str(scene["accent"]))
 	vars = (scene.get("vars", {}) as Dictionary).duplicate(true)
 	if bool(scene.get("persist", false)):
@@ -768,6 +770,7 @@ func _wants(h: Dictionary) -> Array:
 	return _arr(h.get("gesture", "tap"))
 
 func _trigger(h: Dictionary, g: String):
+	_buzz(40 if g in ["hold", "rub", "double"] else 18)
 	var key := _hkey(h)
 	var cd := float(h.get("cooldown", 0.35))
 	if _mem["cool"].has(key) and _now() - float(_mem["cool"][key]) < cd: return
@@ -1136,3 +1139,8 @@ func _finish(reason: String):
 
 func close():
 	_finish("closed")
+
+
+func _buzz(ms: int) -> void:
+	if haptics and OS.has_feature("mobile"):
+		Input.vibrate_handheld(ms)
