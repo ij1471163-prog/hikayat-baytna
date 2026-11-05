@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "incoming" / "videos"
 DST = ROOT / "assets" / "videos"
 EXT = {".mp4", ".mov", ".webm", ".mkv", ".m4v", ".avi", ".ogv"}
-CHARS = {"layan": "ليان", "nora": "نورة", "sara": "سارة", "hind": "هند", "maysoon": "ميسون", "salma": "الشبح"}
+CHARS = {"layan": "ليان", "nora": "نورة", "sara": "سارة", "hind": "هند", "maysoon": "ميسون", "reem": "ريم", "salma": "الشبح"}
 
 def slug(s: str) -> str:
     s = unicodedata.normalize("NFKC", s).lower()

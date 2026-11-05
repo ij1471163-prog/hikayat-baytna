@@ -36,6 +36,7 @@ const NPCS := {
 	"سارة": {"img": "res://assets/npcs/sara.png", "sched": ["العمل", "المقهى", "المقهى", ""], "weekend": ["", "", "المقهى", ""]},
 	"هند": {"img": "res://assets/npcs/hind.png", "sched": ["الحديقة", "السوبرماركت", "الحديقة", ""], "weekend": ["", "الحديقة", "", ""]},
 	"ميسون": {"img": "res://assets/npcs/maysoon.png", "sched": ["", "الحديقة", "المقهى", "الشاطئ"], "weekend": ["الحديقة", "الشاطئ", "المقهى", "الشاطئ"]},
+	"ريم": {"img": "res://assets/npcs/reem.png", "sched": ["", "", "الصالة", ""], "weekend": ["", "المطبخ", "الصالة", ""]},
 	"الشبح": {"img": "res://assets/sprites/ghost/body4.png", "sched": ["", "", "", "غرفة النوم"]}
 }
 

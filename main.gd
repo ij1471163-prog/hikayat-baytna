@@ -36,7 +36,7 @@ var house_cleanliness := 75
 var meals_prepared := 0
 var shower_count := 0
 var schedule_note := "بداية يوم هادئ في المنزل"
-var character_relations := {"نورة":70, "سارة":55, "هند":40, "ميسون":35, "الشبح":0}
+var character_relations := {"نورة":70, "سارة":55, "هند":40, "ميسون":35, "ريم":50, "الشبح":0}
 var daily_flags := {}
 const StoryData = preload("res://story_data.gd")
 var story_seen: Array = []
@@ -1463,6 +1463,7 @@ func character_hub():
  choice("سارة — صديقة ليان", func(): character_scene("سارة"))
  choice("هند — الجارة", func(): character_scene("هند"))
  choice("ميسون — صديقة من خارج الحي", func(): character_scene("ميسون"))
+ choice("ريم — أخت ليان الكبيرة", func(): character_scene("ريم"))
  choice("رجوع للمنزل", func(): go("المنزل"))
 
 func character_scene(name: String):
@@ -1489,6 +1490,11 @@ func character_scene(name: String):
     if sheet_style: sheet_style.bg_color.a = 0.6
    choice("سولف معها عن ماضيها (+4 علاقة)", func(): character_action(name, 4, "سلمى حكت لك ذكريات عن البيت القديم."))
    choice("اجلس معها بصمت (+2 علاقة)", func(): character_action(name, 2, "جلستم بهدوء تسمعون صوت الليل."))
+  "ريم":
+   say("ريم", "أخت ليان الكبيرة (٣٥ سنة). تزوركم بعد الدوام وتسولف معكم، وتحب تتطمن على أختها.")
+   choice("رحب فيها واسألها عن أخبارها (+3 علاقة)", func(): character_action(name, 3, "رحبت بريم وسولفتوا عن أخبار العائلة."))
+   choice("اطلب نصيحتها عن ليان (+4 علاقة)", func(): character_action(name, 4, "ريم حكت لك عن ليان وهي صغيرة وضحكتم."))
+   choice("اعزمها على القهوة (-15 ريال، +5 علاقة)", func(): invite_character(name, 15, 5))
   "ميسون":
    say("ميسون", "صديقة خارج الحي تحب الخروج والأنشطة الجديدة.")
    choice("اسألها عن يومها (+2 علاقة)", func(): character_action(name, 2, "تبادلتما أخبار اليوم."))
@@ -2767,7 +2773,7 @@ func open_profile():
  add_card_label(body, "اليوم %d • %s • الرصيد %d ريال" % [day, periods[period], money], 22)
  add_card_label(body, "العلاقات", 26, GOLD)
  var rels = [["ليان", relationship]]
- for n in ["نورة", "سارة", "هند", "ميسون", "الشبح"]:
+ for n in ["نورة", "سارة", "هند", "ميسون", "ريم", "الشبح"]:
   if n == "الشبح" and not has_flag("ghost_met"): continue
   rels.append([n, int(character_relations.get(n, 0))])
  for r in rels:
@@ -4595,7 +4601,7 @@ func live_shower_end():
 
 
 # ================= مشاهد الحوار الجماعية =================
-const SPEAKER_NPC := {"ليان": "ليان", "نورة": "نورة", "سارة": "سارة", "هند": "هند", "ميسون": "ميسون", "سلمى": "الشبح"}
+const SPEAKER_NPC := {"ليان": "ليان", "نورة": "نورة", "سارة": "سارة", "هند": "هند", "ميسون": "ميسون", "ريم": "ريم", "سلمى": "الشبح"}
 
 func group_scene_ok(sc: Dictionary, place: String) -> bool:
  if story_seen.has(sc["id"]): return false
