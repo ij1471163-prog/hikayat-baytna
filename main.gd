@@ -46,6 +46,7 @@ var goal_start_day := 1
 var events_done := 0
 var story_ended := false
 const WorldData = preload("res://world_data.gd")
+const BanterData = preload("res://banter_data.gd")
 const RoomsData = preload("res://rooms_data.gd")
 const TalkData = preload("res://talk_data.gd")
 const FamilyData = preload("res://family_data.gd")
@@ -3288,6 +3289,25 @@ func room_intro():
  else:
   speaker.text = location
   dialogue.text = str(rd["desc"])
+ _append_banter()
+
+# سوالف بين الشخصيات الموجودات بنفس المكان (banter_data.gd). تتغير كل وقت، وتثبت لين يتغير المكان/الوقت.
+func _append_banter():
+ var present: Array = []
+ for n in WorldData.NPCS:
+  if (n == "ليان" and layan_here(location)) or (n != "ليان" and npc_present(n, location)): present.append(n)
+ if present.size() < 2:
+  return
+ var key := "%d:%d:%s:%d" % [day, period, location, present.size()]
+ if str(daily_flags.get("bn_key", "")) != key:
+  daily_flags["bn_key"] = key
+  var ex: Array = BanterData.pick(present)
+  var txt := ""
+  for ln in ex: txt += "«%s»: %s\n" % [ln[0], ln[1]]
+  daily_flags["bn_txt"] = txt.strip_edges()
+ var t := str(daily_flags.get("bn_txt", ""))
+ if t != "":
+  dialogue.text += "\n\n" + t
 
 # ================= لمس الشخصيات وسحبها =================
 # اسحب الشخصية يمين/يسار تتحرك وتبقى مكانها. المس الراس/الخد/الكتف/اليد ترد عليك.
