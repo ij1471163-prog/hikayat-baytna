@@ -1,0 +1,53 @@
+# Test only (branch rig-test): can SkinTokens.cpp give a mesh a skeleton + skin weights on a free GitHub runner?
+# Uses a public sample model downloaded at run time (nothing personal is stored in this public repository).
+name: rig-test
+on:
+  push:
+    branches: [rig-test]
+  workflow_dispatch:
+jobs:
+  rig:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Machine
+        run: nproc; free -h; df -h . | tail -1
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ninja-build nlohmann-json3-dev g++-14 cmake > /dev/null
+          cmake --version | head -1; g++-14 --version | head -1
+      - name: Get SkinTokens.cpp
+        run: git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/localai-org/skin-tokens.cpp st
+      - name: Build (CPU only)
+        working-directory: st
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKINTOKENS_ENABLE_VULKAN=OFF -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
+          cmake --build build -j"$(nproc)"
+          ls build/bin
+      - name: Weights (F16)
+        run: |
+          pip install -q "huggingface_hub[cli]"
+          (hf download LocalAI-io/SkinTokens-GGUF --include "F16/*" --local-dir models/SkinTokens-GGUF || huggingface-cli download LocalAI-io/SkinTokens-GGUF --include "F16/*" --local-dir models/SkinTokens-GGUF)
+          du -sh models/SkinTokens-GGUF/F16; ls -la models/SkinTokens-GGUF/F16
+      - name: Sample model
+        run: |
+          curl -sSL -o sample.glb https://raw.githubusercontent.com/mrdoob/three.js/r160/examples/models/gltf/Xbot.glb
+          ls -la sample.glb
+      - name: Inspect
+        run: ./st/build/bin/skintokens-cli inspect models/SkinTokens-GGUF/F16 | head -40
+      - name: Rig
+        run: |
+          ./st/build/bin/skintokens-cli --help 2>&1 | head -40 || true
+          /usr/bin/time -v ./st/build/bin/skintokens-cli rig models/SkinTokens-GGUF/F16 sample.glb sample-rigged.glb --device cpu 2>&1 | tee rig.log || \
+          /usr/bin/time -v ./st/build/bin/skintokens-cli rig models/SkinTokens-GGUF/F16 sample.glb sample-rigged.glb 2>&1 | tee rig.log
+          ls -la sample-rigged.glb
+      - name: Result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rig-result
+          path: |
+            sample-rigged.glb
+            rig.log
+          if-no-files-found: warn
