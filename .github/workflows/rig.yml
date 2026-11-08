@@ -38,7 +38,8 @@ jobs:
       - name: Build SkinTokens.cpp (first time only)
         if: steps.list.outputs.count != '0'
         run: |
-          if [ ! -x st/build/bin/skintokens-cli ]; then
+          export LD_LIBRARY_PATH="$PWD/st/build/lib:$PWD/st/build/bin"
+          if ! ./st/build/bin/skintokens-cli inspect models/SkinTokens-GGUF/F16 > /dev/null 2>&1 && ! ./st/build/bin/skintokens-cli --help > /dev/null 2>&1; then   # (a cached build that cannot run is rebuilt)
             sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build nlohmann-json3-dev g++-14 cmake > /dev/null
             rm -rf st && git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/localai-org/skin-tokens.cpp st
             cmake -S st -B st/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKINTOKENS_ENABLE_VULKAN=OFF -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
