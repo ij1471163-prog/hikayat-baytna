@@ -12,6 +12,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rig-test
       - name: Machine
         run: nproc; free -h; df -h . | tail -1
       - name: Tools
