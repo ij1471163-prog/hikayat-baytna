@@ -1,0 +1,73 @@
+# Upload a .glb into inbox/ on branch rig-test -> SkinTokens.cpp gives it a skeleton + skin weights (CPU, free runner)
+# -> the result is saved as rigged/<name>-rigged.glb and the uploaded file is removed from inbox/.
+name: rig
+on:
+  push:
+    branches: [rig-test]
+    paths: ['inbox/**.glb', 'inbox/**.GLB']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: rig
+  cancel-in-progress: false
+jobs:
+  rig:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: rig-test
+      - name: Models to rig
+        id: list
+        run: |
+          shopt -s nullglob nocaseglob
+          files=(inbox/*.glb)
+          echo "count=${#files[@]}" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "${files[@]}"
+      - name: Cached build and weights
+        if: steps.list.outputs.count != '0'
+        uses: actions/cache@v4
+        with:
+          path: |
+            st/build/bin
+            st/build/lib
+            models/SkinTokens-GGUF/F16
+          key: skintokens-v1
+      - name: Build SkinTokens.cpp (first time only)
+        if: steps.list.outputs.count != '0'
+        run: |
+          if [ ! -x st/build/bin/skintokens-cli ]; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq ninja-build nlohmann-json3-dev g++-14 cmake > /dev/null
+            rm -rf st && git clone --depth 1 --recurse-submodules --shallow-submodules https://github.com/localai-org/skin-tokens.cpp st
+            cmake -S st -B st/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DSKINTOKENS_ENABLE_VULKAN=OFF -DCMAKE_CXX_COMPILER=g++-14 -DCMAKE_C_COMPILER=gcc-14
+            cmake --build st/build -j"$(nproc)"
+          fi
+          ls st/build/bin
+      - name: Weights (first time only)
+        if: steps.list.outputs.count != '0'
+        run: |
+          if [ ! -d models/SkinTokens-GGUF/F16 ] || [ -z "$(ls -A models/SkinTokens-GGUF/F16)" ]; then
+            pip install -q "huggingface_hub[cli]"
+            hf download LocalAI-io/SkinTokens-GGUF --include "F16/*" --local-dir models/SkinTokens-GGUF
+          fi
+          du -sh models/SkinTokens-GGUF/F16
+      - name: Rig each model
+        if: steps.list.outputs.count != '0'
+        run: |
+          shopt -s nullglob nocaseglob
+          export LD_LIBRARY_PATH="$PWD/st/build/lib:$PWD/st/build/bin:$LD_LIBRARY_PATH"
+          git config user.name "rig-bot"; git config user.email "rig-bot@users.noreply.github.com"
+          for f in inbox/*.glb; do
+            name="$(basename "${f%.*}")"; out="rigged/${name}-rigged.glb"
+            echo "== $f"
+            if ./st/build/bin/skintokens-cli rig models/SkinTokens-GGUF/F16 "$f" "$out" --device cpu > "rigged/${name}.log" 2>&1; then
+              git rm -q "$f"; git add "$out" "rigged/${name}.log"
+              git commit -q -m "rig: $name [skip ci]"
+            else
+              echo "FAILED: $name"; tail -20 "rigged/${name}.log"
+              git add "rigged/${name}.log"; git commit -q -m "rig failed: $name [skip ci]" || true
+            fi
+            git pull -q --rebase && git push -q
+          done
