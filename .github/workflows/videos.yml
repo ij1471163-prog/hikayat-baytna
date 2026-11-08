@@ -9,6 +9,8 @@ on:
       - "incoming/interactive/**"
       - "!incoming/interactive/README-AR.md"
       - "!incoming/interactive/_example/**"
+      - "incoming/models/**"
+      - "!incoming/models/README-AR.md"
   workflow_dispatch:
 
 permissions:
@@ -32,15 +34,17 @@ jobs:
         run: python3 tools/videos/convert_videos.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Convert interactive scenes
         run: python3 tools/videos/convert_interactive.py | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Move 3D models
+        run: python3 tools/models/convert_models.py | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Commit to main
-        if: (env.DONE != '0' && env.DONE != '') || (env.IVG_DONE != '0' && env.IVG_DONE != '')
+        if: (env.DONE != '0' && env.DONE != '') || (env.IVG_DONE != '0' && env.IVG_DONE != '') || (env.MODELS_DONE != '0' && env.MODELS_DONE != '')
         run: |
           git config user.name "videos-bot"
           git config user.email "videos-bot@users.noreply.github.com"
-          git add -A assets/videos incoming/videos video_data.gd assets/ivg incoming/interactive ivg_data.gd
+          git add -A assets/videos incoming/videos video_data.gd assets/ivg incoming/interactive ivg_data.gd assets/models incoming/models models_data.gd
           git commit -q -m "Character videos converted (run ${{ github.run_id }})"
           git pull -q --rebase origin main
           git push -q origin HEAD:main
       - name: Build APK
-        if: (env.DONE != '0' && env.DONE != '') || (env.IVG_DONE != '0' && env.IVG_DONE != '')
+        if: (env.DONE != '0' && env.DONE != '') || (env.IVG_DONE != '0' && env.IVG_DONE != '') || (env.MODELS_DONE != '0' && env.MODELS_DONE != '')
         run: gh workflow run build-android.yml --ref main && echo "::notice title=apk::بدأ بناء APK فيه الفيديوهات الجديدة"

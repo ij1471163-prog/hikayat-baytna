@@ -2317,12 +2317,14 @@ func talk_to(npc: String):
   choice("روتين ليان اليومي", layan_routine)
   choice("أعطها هدية", func(): gift_menu("ليان"))
   add_interactive_choice(npc)
+  add_model_choice(npc)
   add_video_choice(npc)
   choice("رجوع", func(): go(location))
  else:
   character_scene(npc)
   choice("أعطه هدية", func(): gift_menu(npc))
   add_interactive_choice(npc)
+  add_model_choice(npc)
   add_video_choice(npc)
 
 # ================= فيديوهات الشخصيات (ترفعها في incoming/videos/<الشخصية>/) =================
@@ -2402,6 +2404,49 @@ func available_ivg(place: String) -> Dictionary:
    if group_scene_ok(sc, place):
     return {"path": str(p), "npc": str(npc), "data": data, "id": sid}
  return {}
+
+# ===== مجسمات 3D للشخصيات (models_data.gd ← tools/models/convert_models.py) =====
+const ModelViewer = preload("res://ivg/model_viewer.gd")
+var _model_box: Control = null
+
+func npc_models(npc: String) -> Array:
+ var scr = load("res://models_data.gd")
+ if scr == null: return []
+ var out: Array = []
+ for p in (scr.MODELS as Dictionary).get(npc, []):
+  if ResourceLoader.exists(str(p)): out.append(str(p))
+ return out
+
+func add_model_choice(npc: String):
+ var ms := npc_models(npc)
+ if ms.is_empty(): return
+ var nm := "سلمى" if npc == "الشبح" else npc
+ choice("عرض ٣D لـ %s (%d)" % [nm, ms.size()], func(): model_menu(npc))
+
+func model_menu(npc: String):
+ var nm := "سلمى" if npc == "الشبح" else npc
+ var ms := npc_models(npc)
+ if ms.size() == 1:
+  play_model(ms[0], nm, func(): talk_to(npc))
+  return
+ say(nm, "اختر مجسّمًا. اسحب للتدوير وقرّص للتقريب.")
+ var i := 0
+ for p in ms:
+  i += 1
+  var path: String = p
+  choice(str(path.get_file().get_basename()).replace("_", " "), func(): play_model(path, nm, func(): model_menu(npc)))
+ choice("رجوع", func(): talk_to(npc))
+
+func play_model(path: String, title: String, after: Callable = Callable()):
+ if is_instance_valid(_model_box): _model_box.queue_free()
+ var v = ModelViewer.new()
+ v.setup(path, title)
+ v.closed.connect(func():
+  if is_instance_valid(v): v.queue_free()
+  if _model_box == v: _model_box = null
+  if after.is_valid(): after.call())
+ add_child(v)
+ _model_box = v
 
 func interactive_menu(npc: String):
  var nm := "سلمى" if npc == "الشبح" else npc
