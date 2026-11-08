@@ -5,6 +5,8 @@ on:
   push:
     branches: [rig-test]
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   rig:
     runs-on: ubuntu-24.04
@@ -42,6 +44,12 @@ jobs:
           /usr/bin/time -v ./st/build/bin/skintokens-cli rig models/SkinTokens-GGUF/F16 sample.glb sample-rigged.glb --device cpu 2>&1 | tee rig.log || \
           /usr/bin/time -v ./st/build/bin/skintokens-cli rig models/SkinTokens-GGUF/F16 sample.glb sample-rigged.glb 2>&1 | tee rig.log
           ls -la sample-rigged.glb
+      - name: Save the result in the branch (public sample only)
+        if: success()
+        run: |
+          mkdir -p results && cp sample-rigged.glb results/ && cp rig.log results/ || true
+          git config user.name "rig-test-bot"; git config user.email "rig-test-bot@users.noreply.github.com"
+          git add results && git commit -m "rig-test: sample result [skip ci]" && git push
       - name: Result
         if: always()
         uses: actions/upload-artifact@v4
